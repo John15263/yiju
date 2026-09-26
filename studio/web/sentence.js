@@ -414,7 +414,8 @@ async function loadConfig() {
     if (!settings.gemini_configured && !askedForKeys) { askedForKeys = true; void settingsUI.open(); }
   } catch (e) { error(new Error(`无法读取服务设置：${e.message}`)); }
 }
-$('settings-open').onclick = () => void settingsUI.open();
+// On the desk it is under ⋯; while composing, where ⋯ is not shown, it sits among the compose buttons.
+$('settings-open').onclick = $('compose-settings').onclick = () => void settingsUI.open();
 // Something to practise on without writing anything first: a short, made-up paragraph.
 const EXAMPLE = '我最近开始学做饭。周末常常给朋友做几道家常菜，不过切菜的时候总是特别小心，怕伤到手。';
 const takeSource = text => { composeUI.useWriting(text); render(state); $('source-text').focus(); };

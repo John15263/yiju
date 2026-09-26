@@ -29,7 +29,7 @@ export function createComposeUI({ api, render, command, getState, error, beforeO
     $('generate-sentence').disabled = pending || working || !settings?.gemini_configured || !packet().source.trim();
     $('generate-sentence').textContent = pending ? '正在整理…' : p && p.status !== 'accepted' ? '重新整理' : '整理我的想法';
     $('source-count').textContent = `${$('source-text').value.length.toLocaleString()} / 20,000 字符`;
-    $('prepare-status').textContent = pending ? '正在梳理核心与辅助结构，再准备逐句表达、短语拆解和提示。长内容会多等一会儿；原文已保存。' : !settings ? '正在读取服务设置…' : !settings.gemini_configured ? '还没有配好文字服务：点右上角 ⋯ →「服务与 key」选服务商、填 key。' : `${settings.text_name} 整理内容、检查短语、点评整句${settings.voice_configured ? ` · 语音陪练：${settings.voice_name}` : ''}`;
+    $('prepare-status').textContent = pending ? '正在梳理核心与辅助结构，再准备逐句表达、短语拆解和提示。长内容会多等一会儿；原文已保存。' : !settings ? '正在读取服务设置…' : !settings.gemini_configured ? '还没有配好文字服务：点下面的「服务与 key」选服务商、填 key。' : `${settings.text_name} 整理内容、检查短语、点评整句${settings.voice_configured ? ` · 语音陪练：${settings.voice_name}` : ''}`;
     $('prepare-error').hidden = p?.status !== 'error'; $('prepare-error').textContent = p?.message || '';
     $('prepare-preview').hidden = !ready;
     const units = ready ? p.units || [{ material: p.material, segments: p.segments }] : [];
