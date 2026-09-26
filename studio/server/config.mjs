@@ -55,7 +55,7 @@ export function config(env = process.env) {
   const qwenVoice = env.QWEN_VOICE?.trim() || 'longanlingxin';
   if (!/^[A-Za-z][\w-]{0,40}$/.test(qwenVoice)) throw new Error('Invalid QWEN_VOICE');
   // Correction cards go to Anki through AnkiConnect, only ever on this machine.
-  const ankiUrl = env.ANKI_CONNECT_URL?.trim() || 'http://127.0.0.1:8766';
+  const ankiUrl = env.ANKI_CONNECT_URL?.trim() || 'http://127.0.0.1:8765';
   const ankiHost = (() => { try { return new URL(ankiUrl).hostname; } catch { return ''; } })();
   if (!['127.0.0.1', 'localhost'].includes(ankiHost)) throw new Error('ANKI_CONNECT_URL must point at this machine');
   const ankiDeck = env.ANKI_DECK?.trim() || '一句::改错';

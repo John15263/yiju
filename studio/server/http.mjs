@@ -96,7 +96,7 @@ export function createServer({ store, pack, cfg, settings = new Settings(), env 
       if (req.headers.origin) check(req.headers.origin === origin, 'Cross-origin request denied', 403);
       check(!['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']), 'Cross-site request denied', 403);
       const url = new URL(req.url, origin), path = url.pathname;
-      if (req.method === 'GET' && path === '/api/health') return json(res, { service: 'generative-studio', version: '0.3.0' });
+      if (req.method === 'GET' && path === '/api/health') return json(res, { service: 'generative-studio', version: '0.4.0' });
       if (req.method === 'GET' && files.has(path)) {
         const [file, mime] = files.get(path);
         if (path === '/' || path === '/legacy') res.setHeader('Set-Cookie', `studio_auth=${token}; HttpOnly; SameSite=Strict; Path=/`);

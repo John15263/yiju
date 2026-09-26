@@ -371,9 +371,24 @@ $('feedback-open').onclick = () => openDrawer('feedback');
 $('drawer-close').onclick = () => closeDrawer();
 $('voice-open').onclick = () => { const starting = !voiceUI.isOpen(); openDrawer('voice', { focus: false }); if (starting) voiceUI.toggle(); };
 $('voice-stop').onclick = () => voiceUI.stop();
+// ⌘ on a Mac, Ctrl elsewhere: Windows has no ⌘, and its Windows key belongs to the system. Everything on the page
+// is written with ⌘, so elsewhere the labels are shown with Ctrl as they appear.
+const MAC = /mac|iphone|ipad/i.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent);
+if (!MAC) {
+  const relabel = node => {
+    if (node.nodeType === Node.TEXT_NODE) { if (node.data.includes('⌘')) node.data = node.data.replace(/⌘\s?/g, 'Ctrl '); return; }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node.title?.includes('⌘')) node.title = node.title.replace(/⌘\s?/g, 'Ctrl ');
+    for (const child of node.childNodes) relabel(child);
+  };
+  relabel(document.body);
+  new MutationObserver(changes => { for (const c of changes) { if (c.type === 'characterData') relabel(c.target); else for (const n of c.addedNodes) relabel(n); } })
+    .observe(document.body, { childList: true, subtree: true, characterData: true });
+}
 // Both keys belong to the desk wherever the cursor is, so the browser never steals them for history.
 document.addEventListener('keydown', event => {
-  if (event.isComposing || event.repeat || !event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return;
+  const command = MAC ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+  if (event.isComposing || event.repeat || !command || event.altKey || event.shiftKey) return;
   const bracket = event.code === 'BracketLeft' || event.key === '[' ? 'hint'
     : event.code === 'BracketRight' || event.key === ']' ? 'voice' : null;
   if (!bracket || $('board').hidden) return;
