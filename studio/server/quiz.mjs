@@ -53,7 +53,7 @@ export class Quizzes {
             items: pending.map(i => ({ blank: i + 1, expected: quiz.answers[i], answer: answers[i] })) }, this.cfg)).value;
           fields(value, ['results'], ['results']);
           check(Array.isArray(value.results) && value.results.length === pending.length, 'Invalid quiz judgment');
-          judged = value.results.map(r => ({ ok: r?.ok === true, note: typeof r?.note === 'string' ? r.note.slice(0, 200) : '', by: 'gemini' }));
+          judged = value.results.map(r => ({ ok: r?.ok === true, note: typeof r?.note === 'string' ? r.note.slice(0, 200) : '', by: this.cfg.textProvider || 'gemini' }));
         } catch {}
       }
       pending.forEach((i, n) => { results[i] = judged?.[n] || { ok: false, note: '和批改的写法不一样，这次没能请 Gemini 判定。', by: 'local' }; });

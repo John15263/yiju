@@ -168,7 +168,7 @@ export class Phrases {
           chunk_reference: opened.item.reference, draft: body.draft || '', level: body.level, trigger,
           hint_language: hintLanguage }, this.cfg)).value;
         fields(live, ['hint'], ['hint']); text(live.hint, 500);
-        written = live.hint; source = 'gemini';
+        written = live.hint; source = this.cfg.textProvider || 'gemini';
       } catch {} finally { this.hinting--; }
     }
     // A canned hint repeated at every pause says nothing about the draft; without a live one, stay quiet.
@@ -264,7 +264,7 @@ export class Phrases {
     check(local || this.pending.size < 4, '正在检查其它短语，请稍后重试。', 429);
     input.text = body.text;
     const record = { id: body.request_id, text: body.text, at: now(), verdict: local ? 'accepted' : 'checking',
-      provider: local ? 'local' : this.cfg.phraseGate === 'jev' ? 'jev' : 'gemini', hint_level: input.hint_level, window_start: r.window_start };
+      provider: local ? 'local' : this.cfg.phraseGate === 'jev' ? 'jev' : this.cfg.textProvider || 'gemini', hint_level: input.hint_level, window_start: r.window_start };
     input.attempts.push(record); input.result = record;
     if (local) { record.message = '这个表达可以，继续下一步。'; this.advance(s, r, 'typed_original'); return this.commit(s); }
     this.commit(s);
