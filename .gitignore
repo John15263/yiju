@@ -5,3 +5,4 @@ studio/data/
 studio/test-results/
 .DS_Store
 dist/
+docs/store/raw/
