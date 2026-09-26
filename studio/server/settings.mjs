@@ -1,13 +1,13 @@
 import { check, fields } from './validation.mjs';
 import { voiceProvider } from './voice-providers.mjs';
 
-// What the settings page may change: which services to use, their keys, and whether cards go to Anki. Where it is
+// What the settings page may change: which services to use, their keys, and whether (and where) cards go to Anki. Where it is
 // kept is up to the runner — studio/data/settings.json (owner-only) for the local server, the browser's own storage
 // for the extension — and it takes precedence over .env, so a key typed into the page wins over a file.
 const KEYS = ['GEMINI_API_KEY', 'DEEPSEEK_API_KEY', 'DASHSCOPE_API_KEY'];
 const CHOICES = { TEXT_PROVIDER: ['gemini', 'deepseek', 'qwen'], VOICE_PROVIDER: ['gemini', 'qwen', 'none'], SPEECH_PROVIDER: ['gemini', 'browser'],
   DASHSCOPE_REGION: ['cn-beijing', 'ap-southeast-1'], ANKI_PUSH: ['on', 'off'] };
-const NAMES = [...KEYS, ...Object.keys(CHOICES), 'DASHSCOPE_WORKSPACE_ID'];
+const NAMES = [...KEYS, ...Object.keys(CHOICES), 'DASHSCOPE_WORKSPACE_ID', 'ANKI_CONNECT_URL'];
 
 export class Settings {
   // disk: { read() → values or null, write(values) }; none keeps the settings in memory only.
@@ -21,7 +21,7 @@ export class Settings {
   view(cfg) {
     const key = v => v ? `…${v.slice(-4)}` : '';
     return { text: cfg.textProvider, voice: cfg.voiceProvider, speech: cfg.speechProvider, region: cfg.dashscopeRegion, workspace: cfg.dashscopeWorkspace,
-      anki: cfg.ankiPush ? 'on' : 'off',
+      anki: cfg.ankiPush ? 'on' : 'off', anki_url: cfg.ankiUrl,
       keys: { GEMINI_API_KEY: key(cfg.geminiKey), DEEPSEEK_API_KEY: key(cfg.deepseekKey), DASHSCOPE_API_KEY: key(cfg.dashscopeKey) },
       from_page: Object.keys(this.values) };
   }
@@ -38,6 +38,7 @@ export class Settings {
         check(v.length <= 300 && /^[\x21-\x7e]+$/.test(v), '这个 key 的格式不对：只能是一整串字母、数字和符号，不能有空格。');
       } else if (CHOICES[name]) check(CHOICES[name].includes(v), 'Invalid setting');
       else if (name === 'DASHSCOPE_WORKSPACE_ID') check(!v || /^[A-Za-z0-9-]{1,64}$/.test(v), '业务空间 ID 的格式不对。');
+      else if (name === 'ANKI_CONNECT_URL') check(!v || /^http:\/\/(127\.0\.0\.1|localhost)(:\d{1,5})?\/?$/.test(v), 'AnkiConnect 地址要在这台电脑上，比如 http://127.0.0.1:8765。');
       if (v) next[name] = v; else delete next[name];
     }
     return next;
@@ -51,6 +52,9 @@ export class Settings {
 // Does each chosen service accept its key? Listing models costs nothing; the Qwen voice check opens the live
 // socket and waits for the service to greet it, sending no audio.
 // voiceCheck replaces the Qwen voice check where a socket cannot carry the key (the browser extension checks over WebRTC).
+// A space goes between Chinese and a Latin word, not between two Chinese ones.
+const spaced = words => /^[A-Za-z]/.test(words) ? ` ${words}` : words;
+
 export async function testServices(cfg, { request = fetch, connect = (url, options) => new WebSocket(url, options), voiceCheck = null } = {}) {
   const get = async (url, headers) => {
     try {
@@ -71,7 +75,7 @@ export async function testServices(cfg, { request = fetch, connect = (url, optio
   const provider = voiceProvider(cfg);
   let voice;
   if (cfg.voiceProvider === 'none') voice = { ok: true, message: '不用语音' };
-  else if (!provider.configured(cfg)) voice = { ok: false, message: `还没填 ${provider.missing}` };
+  else if (!provider.configured(cfg)) voice = { ok: false, message: `还没填${spaced(provider.missing)}` };
   else if (voiceCheck && cfg.voiceProvider === 'qwen') voice = await voiceCheck(cfg);
   else if (cfg.voiceProvider === 'gemini') voice = { ...(await gemini()) };
   else voice = await new Promise(resolve => {
@@ -89,5 +93,7 @@ export async function testServices(cfg, { request = fetch, connect = (url, optio
   });
   // The browser's own voices need nothing; Gemini's speech takes the Gemini key.
   const speech = cfg.speechProvider === 'browser' ? { ok: true, message: '用浏览器自带的朗读' } : { ...(await gemini()) };
-  return { text, voice, speech };
+  // Anki only when cards are to go there; the learner may be asked, in Anki, to let this page send them.
+  const anki = cfg.ankiPush && cfg.anki ? await cfg.anki.permission() : null;
+  return { text, voice, speech, ...(anki && { anki }) };
 }

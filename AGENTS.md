@@ -40,7 +40,7 @@ node edge/build.mjs    # 生成 dist/edge/，里面有 manifest.json
 ### 插件版常见问题
 
 - **"清单文件缺失"或加载失败**：选错了文件夹，要选 `dist/edge` 或解压出来、最外层有 `manifest.json` 的文件夹。
-- **Anki**：在「服务与 key」里勾上推送时，浏览器会问是否允许连接本机；还要在 Anki 的「工具 → 插件 → AnkiConnect → 配置」里，把设置框里显示的那一行（`chrome-extension://…`）加进 `webCorsOriginList`，然后重启 Anki。AnkiConnect 要用默认端口 8765。
+- **Anki**：Anki 要开着并装好 AnkiConnect。在「服务与 key」里勾上推送、点「保存并测试」时，浏览器会问是否允许连接本机，Anki 也会弹窗问是否允许一句，都让用户点允许；结果里的「Anki」一行显示 ✓ 就好。Anki 没有弹窗的话，在 Anki 的「工具 → 插件 → AnkiConnect → 配置」里把设置框里显示的那一行（`chrome-extension://…`）加进 `webCorsOriginList`。AnkiConnect 改过端口（`webBindPort`）的话，在设置框的「AnkiConnect 地址」里填同一个端口。
 - **更新插件**：拿到新版本后覆盖原来的文件夹，在扩展页面点一句的「重新加载」。练习记录和设置保留在浏览器里，不受影响。
 
 ## 本机服务版（开发用）

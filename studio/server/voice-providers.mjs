@@ -9,7 +9,7 @@ const GEMINI_LIVE = 'wss://generativelanguage.googleapis.com/ws/google.ai.genera
 const gemini = {
   name: 'Google Gemini Live',
   configured: cfg => Boolean(cfg.geminiKey),
-  missing: 'GEMINI_API_KEY',
+  missing: 'Gemini key',
   model: cfg => cfg.geminiLiveModel,
   open: (cfg, connect) => connect(`${GEMINI_LIVE}?key=${encodeURIComponent(cfg.geminiKey)}`),
   setup: (cfg, system) => [{ setup: {
@@ -52,7 +52,7 @@ const qwenUsage = u => u && { promptTokenCount: u.input_tokens, candidatesTokenC
 const qwen = {
   name: '阿里云百炼的千问 Qwen-Omni-Realtime',
   configured: cfg => Boolean(cfg.dashscopeKey),
-  missing: 'DASHSCOPE_API_KEY',
+  missing: '百炼 key',
   model: cfg => cfg.qwenRealtimeModel,
   open: (cfg, connect) => connect(qwenURL(cfg), { headers: { Authorization: `Bearer ${cfg.dashscopeKey}` } }),
   setup: (cfg, system) => [{ type: 'session.update', session: {

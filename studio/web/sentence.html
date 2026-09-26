@@ -290,6 +290,11 @@
       <div class="choice">
         <label><input type="checkbox" id="ANKI_PUSH"> 把改错小测做成卡片，推送到 Anki</label>
       </div>
+      <div class="field" id="anki-field" hidden>
+        <label for="ANKI_CONNECT_URL">AnkiConnect 地址</label>
+        <input type="text" id="ANKI_CONNECT_URL" name="ANKI_CONNECT_URL" autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:8765">
+        <span class="muted">默认端口是 8765；在 AnkiConnect 的配置里改过 webBindPort 的话，填同一个端口。</span>
+      </div>
       <p id="anki-note" class="muted" hidden><span id="ankiconnect-origin"></span></p>
 
       <p id="settings-result" class="settings-result" role="status"></p>

@@ -18,13 +18,18 @@ export function clozeCard(quiz, r) {
   return { text, extra, tags: ['一句', r.language === 'ja' ? '日语' : '英语', quiz.kind === 'chunk' ? '短语' : '整句'], round_id: r.id, quiz_id: quiz.id };
 }
 
+const DENIED = 'Anki 还没允许一句推送卡片：在「服务与 key」里点「保存并测试」，再在 Anki 弹出的窗口里点「是」';
+
 export class Anki {
   constructor(store, cfg, request = fetch) {
-    this.store = store; this.cfg = cfg; this.url = cfg.ankiUrl; this.deck = cfg.ankiDeck;
+    this.store = store; this.cfg = cfg;
     // Called on its own: a browser's fetch refuses to run as a method of this object ("Illegal invocation").
     this.request = (...args) => request(...args);
     this.flushing = null; this.lastError = ''; this.lastPushed = null;
   }
+  // Read from the shared settings each time, so an address changed on the settings page counts at once.
+  get url() { return this.cfg.ankiUrl; }
+  get deck() { return this.cfg.ankiDeck; }
   // Only a runner that turned pushing on pushes; tests and previews keep cards in the outbox, away from the learner's Anki.
   get live() { return this.cfg.ankiPush === true; }
   // Retried in the background, so a card made while Anki was closed goes over once it is opened.
@@ -35,13 +40,26 @@ export class Anki {
     } catch { return; }
     void this.flush();
   }
-  async call(action, params = {}) {
-    const response = await this.request(this.url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5000),
+  async call(action, params = {}, timeout = 5000) {
+    const response = await this.request(this.url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeout),
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, version: 6, params }) });
+    // AnkiConnect answers a page it does not trust yet (the extension, until the learner allows it) with 403 and no body.
+    if (response.status === 403) throw Object.assign(new Error(DENIED), { anki: true, denied: true });
     const data = await response.json();
     if (data?.error) throw Object.assign(new Error(String(data.error)), { anki: true });
     return data?.result;
   }
+  // AnkiConnect takes cards only from pages it trusts. Asked this way, Anki shows the learner a window and trusts
+  // this page once they say yes, so nobody edits AnkiConnect's settings by hand; a page already trusted (and the
+  // local server, which sends no origin) is answered at once. Only the settings page's test asks, while the
+  // learner is there to answer.
+  async permission() {
+    try {
+      const result = await this.call('requestPermission', {}, 120000);
+      return result?.permission === 'granted' ? { ok: true } : { ok: false, message: 'Anki 里没有允许：要在它弹出的窗口里点「是」' };
+    } catch (e) { return { ok: false, message: e.anki ? e.message : `${this.unreachable()}。卡片会先留着，打开 Anki 后自动推送` }; }
+  }
+  unreachable() { return `连不上 Anki（${this.url}）：Anki 没打开，或者 AnkiConnect 不在这个端口上`; }
   // Cards go into a note type of their own, made here the first time, so they never land in one of the
   // learner's own templates (a collection may have no built-in Cloze type, only custom ones with other
   // fields). Reviewing, the blank is typed in, as it was in practice.
@@ -63,7 +81,7 @@ export class Anki {
     if (!rows.length) return;
     let model;
     try { model = await this.model(); await this.call('createDeck', { deck: this.deck }); }
-    catch (e) { this.lastError = e.anki ? e.message : `连不上 Anki（${this.url}）：Anki 没打开，或者 AnkiConnect 没在这个端口上`; return; }
+    catch (e) { this.lastError = e.anki ? e.message : this.unreachable(); return; }
     this.lastError = '';
     for (const row of rows) {
       const card = row.card;
@@ -73,7 +91,8 @@ export class Anki {
         this.store.ankiMark(row.id, { status: 'sent', note_id: noteID, pushed_at: new Date().toISOString() });
         this.lastPushed = new Date().toISOString();
       } catch (e) {
-        if (!e.anki) { this.lastError = `推送中途连不上 Anki（${this.url}）`; return; }
+        // Not reached, or no longer trusted: the card waits for the next try.
+        if (!e.anki || e.denied) { this.lastError = e.denied ? e.message : `推送中途连不上 Anki（${this.url}）`; return; }
         // Already in the deck: that is what was wanted.
         const duplicate = /duplicate/i.test(e.message);
         this.store.ankiMark(row.id, { status: duplicate ? 'sent' : 'failed', error: duplicate ? null : e.message.slice(0, 300), pushed_at: new Date().toISOString() });

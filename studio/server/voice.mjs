@@ -180,7 +180,7 @@ export class Voice {
     catch (e) { conn.send(JSON.stringify({ voice: 'error', message: e.message })); conn.close(1008, 'Invalid session'); return; }
     const provider = voiceProvider(this.cfg), send = value => conn.send(JSON.stringify(value));
     if (!provider.configured(this.cfg)) {
-      send({ voice: 'error', message: this.cfg.voiceProvider === 'none' ? '设置里选了「不用语音」。' : `语音陪练需要先在「设置」里填 ${provider.missing}。` });
+      send({ voice: 'error', message: this.cfg.voiceProvider === 'none' ? '设置里选了「不用语音」。' : `语音陪练需要先在「服务与 key」里填${/^[A-Za-z]/.test(provider.missing) ? ' ' : ''}${provider.missing}。` });
       conn.close(1008, 'No key'); return;
     }
     // One learner, one page: a call that starts while an older one is still closing replaces it,

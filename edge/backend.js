@@ -29,7 +29,8 @@ export const local = false;
 usePrompts(PROMPTS);
 const store = await BrowserStore.open();
 const settings = new Settings({ read: () => store.get('settings'), write: values => store.set('settings', values) });
-// There is no .env in a browser: the settings page is the only source. AnkiConnect listens on its own default port.
+// There is no .env in a browser: the settings page is the only source. AnkiConnect is at its default address unless
+// the settings page gives another (any port on this computer is covered by the optional permission).
 const base = { ANKI_CONNECT_URL: 'http://127.0.0.1:8765' };
 const cfg = config(settings.env(base));
 cfg.ttsCache = speechCache();
@@ -173,7 +174,7 @@ export function microphoneDenied() {
 
 // Reaching Anki on this computer is an optional permission, asked for when pushing is turned on.
 export const allowAnki = () => chrome.permissions.request({ origins: ['http://127.0.0.1/*', 'http://localhost/*'] }).catch(() => false);
-export const ankiNote = `Anki 要开着，并装好 AnkiConnect 插件（代码 2055492159）；再在 Anki 的「工具 → 插件 → AnkiConnect → 配置」里，把 chrome-extension://${chrome.runtime.id} 加进 webCorsOriginList。`;
+export const ankiNote = `Anki 要开着，并装好 AnkiConnect 插件（代码 2055492159）。点「保存并测试」时，Anki 会弹出窗口问是否允许，点「是」就好；没有弹窗的话，在 Anki 的「工具 → 插件 → AnkiConnect → 配置」里把 chrome-extension://${chrome.runtime.id} 加进 webCorsOriginList。`;
 
 // Text chosen with the right-click menu on any page: handed over once, as a new idea to practise.
 export function onSource(use) {

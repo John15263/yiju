@@ -134,7 +134,7 @@ Gemini 不可用时退回材料里预生成的提示。记录保存的是**实�
 - 用自己的笔记类型 `一句 · 改错填空`（字段 Text、Extra），第一次推送时自动建好，不碰已有的笔记类型（这台 Anki 里没有内置的 Cloze，只有别的自定义模板）。
 - Anki 没开时卡片留在待推送里，服务启动时和之后每 5 分钟重试，也可以在“更多 → 练习记录与设置 → Anki”手动“现在推送”；那里显示已推送、待推送、失败的张数和最近的错误。Anki 里已经有的卡算已推送。
 - 只有真正的练习服务（`server/main.mjs` 的 `ankiPush: true`）会推送；测试和预览只放进 outbox，不碰真的 Anki。
-- 地址 `ANKI_CONNECT_URL`，默认 `http://127.0.0.1:8765`（AnkiConnect 的标准端口），只允许本机。8765 被别的程序占用时，可以在 AnkiConnect（Anki 附加组件 2055492159）的配置里改 `webBindPort`，再把这里的地址改成同一个端口；改端口后要重启 Anki。
+- 地址 `ANKI_CONNECT_URL`，默认 `http://127.0.0.1:8765`（AnkiConnect 的标准端口），只允许本机。8765 被别的程序占用时，可以在 AnkiConnect（Anki 附加组件 2055492159）的配置里改 `webBindPort`，再把这里的地址改成同一个端口（也可以在「服务与 key」的「AnkiConnect 地址」里改，插件版只能在那里改）；改端口后要重启 Anki。
 - `GET /api/anki` 返回状态，`POST /api/anki/flush` 立即推一次。
 
 # Jev 检查诊断
