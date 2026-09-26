@@ -33,13 +33,15 @@ export function browserVoice(lang, synth = globalThis.speechSynthesis) {
 // Chrome can drop speech silently: an utterance collected before it starts, a queue left paused, a speak
 // sent in the same instant as a cancel. Each of those is guarded here, and what happened to the last one
 // (spoken, failed, never started) is reported so it can be seen in settings.
-// Key symbols are for the eye; a voice says their names.
-const spoken = text => text.trim().replace(/⌘\s*↵/g, 'Command 回车').replace(/⌘\s*\[/g, 'Command 左方括号').replace(/⌘\s*\]/g, 'Command 右方括号');
+// Key symbols are for the eye; a voice says their names, as the key is called on this computer (the page shows
+// ⌘ as Ctrl where there is no ⌘).
+const onMac = () => /mac|iphone|ipad/i.test(globalThis.navigator?.userAgentData?.platform || globalThis.navigator?.platform || globalThis.navigator?.userAgent || '');
+const spoken = (text, key) => text.trim().replace(/(?:⌘|Ctrl)\s*↵/g, `${key} 回车`).replace(/(?:⌘|Ctrl)\s*\[/g, `${key} 左方括号`).replace(/(?:⌘|Ctrl)\s*\]/g, `${key} 右方括号`);
 const RATE = 24000;
 
-export function createSpeech({ enabled, busy, report = () => {}, engine = () => 'system',
+export function createSpeech({ enabled, busy, report = () => {}, engine = () => 'system', mac = onMac(),
   fetcher = (...args) => globalThis.fetch(...args), makeContext = () => new AudioContext({ sampleRate: RATE }) }) {
-  const synth = globalThis.speechSynthesis;
+  const synth = globalThis.speechSynthesis, command = mac ? 'Command' : 'Control';
   let last = '', current = null, watchdog = null, waitingUtterance = null;
   // Gemini's audio. A hint being said is said to the end: cutting it off halfway leaves nothing usable.
   // A newer hint waits its turn, and only the newest waits (one that went stale while waiting is dropped
@@ -86,7 +88,7 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
     setTimeout(() => { if (speaking === item) { speaking = null; next(); } }, left * 1000 + 30);
   }
   async function gemini(text, target) {
-    const words = spoken(text), language = langOf(text, target), key = `${language}|${words}`;
+    const words = spoken(text, command), language = langOf(text, target), key = `${language}|${words}`;
     const item = { text, target, key, parts: [], sources: new Set(), control: new AbortController(), voice: 'Gemini', live: false, done: false, heard: false, error: '' };
     if (speaking) { drop(waiting); waiting = item; } else { speaking = item; item.live = true; }
     const gone = () => item.control.signal.aborted;
@@ -131,7 +133,7 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
     settle(item);
   }
   function utter(text, target, retried = false, why = '') {
-    const utterance = new SpeechSynthesisUtterance(spoken(text));
+    const utterance = new SpeechSynthesisUtterance(spoken(text, command));
     utterance.lang = langOf(text, target);
     const voice = browserVoice(utterance.lang, synth);
     if (voice) utterance.voice = voice;

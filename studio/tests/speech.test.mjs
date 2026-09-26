@@ -34,7 +34,7 @@ test('hints are spoken once, with the best voice, never over the tutor, and each
   ];
   const synth = fakeSynth(t, voices), reports = [];
   let on = true, talking = false;
-  const speech = createSpeech({ enabled: () => on, busy: () => talking, report: r => reports.push(r) });
+  const speech = createSpeech({ enabled: () => on, busy: () => talking, report: r => reports.push(r), mac: true });
 
   speech.say('到这里都对，接着往下写。', 'en'); await tick();
   assert.equal(synth.spoken[0].voice.name, 'Tingting (Enhanced)', 'a downloaded voice first; robotic, novelty and network voices last');
@@ -73,6 +73,15 @@ test('hints are spoken once, with the best voice, never over the tutor, and each
   assert.equal(synth.spoken.length, before);
 });
 
+test('away from a Mac, a shortcut is read out with the Control key, however the page shows it', async t => {
+  const synth = fakeSynth(t, [{ name: 'Tingting', lang: 'zh-CN', localService: true }]);
+  const speech = createSpeech({ enabled: () => true, busy: () => false, mac: false });
+  speech.say('这一块看起来写完整了，按 ⌘ ↵ 检查。', 'en'); await tick();
+  synth.finish(); await tick();
+  speech.say('卡住了就按 Ctrl ] 问。', 'en'); await tick();
+  assert.deepEqual(synth.spoken.map(u => u.text), ['这一块看起来写完整了，按 Control 回车 检查。', '卡住了就按 Control 右方括号 问。']);
+});
+
 test('speech that never starts is tried once more, then reported as silent', async t => {
   const synth = fakeSynth(t, [{ name: 'Samantha', lang: 'en-US', localService: true }], { starts: false }), reports = [];
   const speech = createSpeech({ enabled: () => true, busy: () => false, report: r => reports.push(r) });
@@ -101,7 +110,7 @@ test('Gemini reads the hint as the audio streams in, a sample split across chunk
   const { context, played } = fakeAudio(), asked = [], reports = [];
   // 0x4000 = half scale, sent little-endian with one sample split over two chunks.
   const fetcher = async (url, options) => { asked.push({ url, body: JSON.parse(options.body) }); return pcmResponse([[0x00, 0x40, 0x00], [0xc0]]); };
-  const speech = createSpeech({ enabled: () => true, busy: () => false, report: r => reports.push(r), engine: () => 'gemini', fetcher, makeContext: () => context });
+  const speech = createSpeech({ enabled: () => true, busy: () => false, report: r => reports.push(r), engine: () => 'gemini', fetcher, makeContext: () => context, mac: true });
   speech.say('Try the word for liking ⌘ ↵', 'en'); await tick();
   assert.equal(asked[0].url, '/api/sentence/speak');
   assert.deepEqual(asked[0].body, { text: 'Try the word for liking Command 回车', language: 'en-US' });
