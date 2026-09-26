@@ -1,24 +1,22 @@
-import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { check, fields, id, text } from './validation.mjs';
-import { geminiJSON } from './gemini.mjs';
+import { textJSON, textConfigured } from './llm.mjs';
+import { prompt } from './prompts.mjs';
 import { clozeFrom, openQuiz } from '../web/view.js';
 import { loose } from '../web/voice-mode.js';
 
 // After a correction has been read and talked over, the corrected wording comes back with each real
 // change left blank, to be filled from memory before moving on. Right away is when it sticks.
 const now = () => new Date().toISOString();
-const instructions = readFileSync(new URL('../prompts/quiz-check.txt', import.meta.url), 'utf8');
 const schema = { type: 'object', additionalProperties: false, required: ['results'], properties: { results: { type: 'array',
   items: { type: 'object', additionalProperties: false, required: ['ok', 'note'], properties: { ok: { type: 'boolean' }, note: { type: 'string' } } } } } };
-export const callQuizCheck = (packet, cfg) => geminiJSON(packet, { ...cfg, geminiTimeout: cfg.geminiNoteTimeout || cfg.geminiTimeout },
-  { instructions, schema, tokens: 8192, limit: 4000, purpose: 'quiz_check' });
+export const callQuizCheck = (packet, cfg) => textJSON(packet, { ...cfg, geminiTimeout: cfg.geminiNoteTimeout || cfg.geminiTimeout },
+  { instructions: prompt('quiz-check'), schema, tokens: 8192, limit: 4000, purpose: 'quiz_check' });
 
 // Null when nothing but case or punctuation changed: nothing worth filling back in.
 export function makeQuiz({ kind, index = null, attemptID, text: written, corrected, meaning, changes = [], language }) {
   const cloze = clozeFrom(written, corrected, language);
   if (!cloze) return null;
-  return { id: randomUUID(), kind, index, attempt_id: attemptID, text: written, corrected, meaning, language, changes,
+  return { id: crypto.randomUUID(), kind, index, attempt_id: attemptID, text: written, corrected, meaning, language, changes,
     segments: cloze.segments, answers: cloze.answers, tries: 0, inputs: [], results: [], status: 'open', passed: null, created_at: now() };
 }
 const TRIES = 2;
@@ -47,7 +45,7 @@ export class Quizzes {
     const pending = results.map((r, i) => r ? null : i).filter(i => i !== null);
     if (pending.length) {
       let judged = null;
-      if (this.cfg.geminiKey) {
+      if (textConfigured(this.cfg)) {
         try {
           let blank = 0;
           const sentence = quiz.segments.map(seg => typeof seg === 'string' ? seg : `[${++blank}]`).join('');

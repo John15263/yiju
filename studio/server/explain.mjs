@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { check, fields, id } from './validation.mjs';
-import { geminiJSON } from './gemini.mjs';
+import { textJSON, textConfigured, textKeyMissing } from './llm.mjs';
+import { prompt } from './prompts.mjs';
+import { sha256 } from './sha256.mjs';
 import { voiceMode } from '../web/voice-mode.js';
 import { contextOf, ETYMOLOGY } from './voice.mjs';
 
@@ -11,10 +11,9 @@ import { contextOf, ETYMOLOGY } from './voice.mjs';
 // next chunk's is written while this one is studied so it starts at once, and it follows the prompt's
 // order more faithfully. The live tutor is still there, opened by hand, for questions.
 const now = () => new Date().toISOString();
-const instructions = readFileSync(new URL('../prompts/explain.txt', import.meta.url), 'utf8').replace('{{ETYMOLOGY}}', ETYMOLOGY);
 const schema = { type: 'object', additionalProperties: false, required: ['lines'], properties: { lines: { type: 'array', items: { type: 'string' } } } };
-export const callExplain = (packet, cfg) => geminiJSON(packet, { ...cfg, geminiTimeout: cfg.geminiNoteTimeout || cfg.geminiTimeout },
-  { instructions, schema, tokens: 8192, limit: 6000, purpose: packet.mode === 'learn' ? 'explain_learn' : 'explain_fix' });
+export const callExplain = (packet, cfg) => textJSON(packet, { ...cfg, geminiTimeout: cfg.geminiNoteTimeout || cfg.geminiTimeout },
+  { instructions: prompt('explain').replace('{{ETYMOLOGY}}', ETYMOLOGY), schema, tokens: 8192, limit: 6000, purpose: packet.mode === 'learn' ? 'explain_learn' : 'explain_fix' });
 const MODES = ['learn', 'fix', 'review'];
 
 // Lines are read aloud one by one, so each stays a sentence or two.
@@ -29,19 +28,16 @@ export function scriptLines(value) {
 export class Explanations {
   constructor(board, cfg, write = callExplain) {
     this.board = board; this.cfg = cfg; this.write = write; this.pending = new Map();
-    this.db = board.store.db;
-    this.db.exec('CREATE TABLE IF NOT EXISTS explanations (key TEXT PRIMARY KEY, mode TEXT NOT NULL, lines TEXT NOT NULL, model TEXT, created_at TEXT NOT NULL)');
   }
   // A chunk is taught the same way whenever it comes up, so its script is found again by what it teaches;
   // a correction is only ever about one attempt, so it is keyed by everything on screen.
   keyOf(r, mode) {
     const chunk = mode.mode === 'learn' ? r.phrases.items[r.phrases.index] : null;
     const basis = chunk ? ['learn', r.language, chunk.meaning, chunk.reference, chunk.hints?.[0] || ''] : [mode.mode, r.language, contextOf(r, mode)];
-    return createHash('sha256').update(JSON.stringify(basis)).digest('hex');
+    return sha256(JSON.stringify(basis));
   }
   kept(key) {
-    const row = this.db.prepare('SELECT lines FROM explanations WHERE key = ?').get(key);
-    return row ? JSON.parse(row.lines) : null;
+    return this.board.store.explanation(key);
   }
   // One writing per script, however many times it is asked for while being written.
   script(key, mode, context) {
@@ -51,8 +47,7 @@ export class Explanations {
       this.pending.set(key, (async () => {
         const result = await this.write({ mode, language: context.语言, context }, this.cfg);
         const lines = scriptLines(result.value);
-        this.db.prepare('INSERT OR REPLACE INTO explanations (key, mode, lines, model, created_at) VALUES (?,?,?,?,?)')
-          .run(key, mode, JSON.stringify(lines), result.model || '', now());
+        this.board.store.saveExplanation({ key, mode, lines, model: result.model, created_at: now() });
         return { lines, cached: false };
       })().finally(() => this.pending.delete(key)));
     }
@@ -61,7 +56,7 @@ export class Explanations {
   async request(body) {
     fields(body, ['round_id', 'window_start', 'key'], ['round_id', 'window_start', 'key']);
     id(body.round_id); check(typeof body.key === 'string' && body.key.length <= 200, 'Invalid key');
-    check(this.cfg.geminiKey, '请在 .env 中填写 GEMINI_API_KEY 并重启服务。', 503);
+    check(textConfigured(this.cfg), textKeyMissing(this.cfg), 503);
     const opened = this.here(body);
     const { r, mode } = opened, key = this.keyOf(r, mode);
     // This chunk first; the next one is written behind it.

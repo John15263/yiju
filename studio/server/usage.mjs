@@ -37,17 +37,14 @@ export function costOf(model, tokens, at = new Date().toISOString()) {
 
 export class Usage {
   constructor(store) {
-    this.db = store.db;
-    this.db.exec(`CREATE TABLE IF NOT EXISTS usage_log (id INTEGER PRIMARY KEY, at TEXT NOT NULL, purpose TEXT NOT NULL, model TEXT NOT NULL,
-      round_id TEXT, text_in INTEGER, audio_in INTEGER, text_out INTEGER, audio_out INTEGER, thoughts INTEGER, usd REAL)`);
+    this.store = store;
   }
   // Metering must never break the call it measures.
   record({ purpose, model, usage, round_id = null }) {
     try {
       if (!usage || !PURPOSES[purpose]) return null;
       const at = new Date().toISOString(), tokens = tokensOf(usage), usd = costOf(model, tokens, at);
-      this.db.prepare('INSERT INTO usage_log (at,purpose,model,round_id,text_in,audio_in,text_out,audio_out,thoughts,usd) VALUES (?,?,?,?,?,?,?,?,?,?)')
-        .run(at, purpose, String(model).slice(0, 100), round_id, tokens.text_in, tokens.audio_in, tokens.text_out, tokens.audio_out, tokens.thoughts, usd);
+      this.store.logUsage({ at, purpose, model: String(model).slice(0, 100), round_id, ...tokens, usd });
       return { ...tokens, usd };
     } catch { return null; }
   }
@@ -55,11 +52,8 @@ export class Usage {
   summary(now = new Date()) {
     const day = new Date(now); day.setHours(0, 0, 0, 0);
     const week = new Date(day); week.setDate(week.getDate() - 6);
-    const total = since => this.db.prepare(`SELECT COUNT(*) AS calls, COALESCE(SUM(usd),0) AS usd FROM usage_log WHERE at >= ?`).get(since);
-    const first = this.db.prepare('SELECT MIN(at) AS at FROM usage_log').get().at;
-    const rows = this.db.prepare(`SELECT purpose, COUNT(*) AS calls, COALESCE(SUM(usd),0) AS usd, SUM(usd IS NULL) AS unpriced,
-      SUM(text_in) AS text_in, SUM(audio_in) AS audio_in, SUM(text_out) AS text_out, SUM(audio_out) AS audio_out, SUM(thoughts) AS thoughts
-      FROM usage_log WHERE at >= ? GROUP BY purpose ORDER BY usd DESC`).all(week.toISOString());
+    const total = since => this.store.usageTotal(since), first = this.store.usageFirst();
+    const rows = this.store.usageByPurpose(week.toISOString());
     return { since: first, today: total(day.toISOString()), week: total(week.toISOString()), all: total(''),
       week_by_purpose: rows.map(r => ({ ...r, label: PURPOSES[r.purpose] })) };
   }

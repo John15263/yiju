@@ -1,13 +1,12 @@
-import { readFileSync } from 'node:fs';
 import { check, fields, id, oneOf, text } from './validation.mjs';
-import { geminiJSON, geminiError } from './gemini.mjs';
+import { textJSON, textError, textConfigured, textKeyMissing } from './llm.mjs';
+import { prompt } from './prompts.mjs';
 import { validateMaterial } from './sentence.mjs';
 import { prepareCloze } from './cloze.mjs';
 import { validateOutline, unitDetails, outlineKeys } from './expression.mjs';
 import { phraseSchema, validatePhrases } from './phrase-material.mjs';
 
 const now = () => new Date().toISOString();
-const instructions = readFileSync(new URL('../prompts/sentence-prepare.txt', import.meta.url), 'utf8');
 const string = { type: 'string' }, strings = { type: 'array', items: string };
 const unitProperties = {
   meaning: string, keywords: strings, frame: string, explanation: string,
@@ -19,7 +18,7 @@ const schema = { type: 'object', properties: {
   units: { type: 'array', items: { type: 'object', properties: unitProperties, required: Object.keys(unitProperties), additionalProperties: false } },
 }, required: ['outline', 'units'], additionalProperties: false };
 
-export const callPreparation = (packet, cfg, request = fetch) => geminiJSON(packet, { ...cfg, geminiTimeout: cfg.geminiPreparationTimeout ?? cfg.geminiTimeout }, { instructions, schema, tokens: 16384, limit: 100000, purpose: 'prepare' }, request);
+export const callPreparation = (packet, cfg, request = fetch) => textJSON(packet, { ...cfg, geminiTimeout: cfg.geminiPreparationTimeout ?? cfg.geminiTimeout }, { instructions: prompt('sentence-prepare'), schema, tokens: 16384, limit: 100000, purpose: 'prepare' }, request);
 export function preparedExpression(value, packet) {
   fields(value, ['outline', 'units'], ['outline', 'units']);
   const outline = validateOutline(value.outline);
@@ -81,7 +80,7 @@ export class Preparations {
       return this.board.public(s);
     }
     check(!this.pending, '正在整理这段想法，请等待本次结果。', 429);
-    check(this.cfg.geminiKey, '请在 .env 中填写 GEMINI_API_KEY 并重启服务。', 503);
+    check(textConfigured(this.cfg), textKeyMissing(this.cfg), 503);
     s.preparation = { id: body.request_id, ...packet, status: 'pending', started_at: now() }; this.commit(s);
     this.pending = this.run(body.request_id, packet).finally(() => { this.pending = null; });
     return this.board.get();
@@ -92,7 +91,7 @@ export class Preparations {
       const response = await this.infer(packet, this.cfg);
       fields(response, ['value', 'model'], ['value', 'model']); text(response.model, 100);
       result = preparedExpression(response.value, packet); model = response.model;
-    } catch (e) { failure = `${geminiError(e)} 原文已保存。`; }
+    } catch (e) { failure = `${textError(e)} 原文已保存。`; }
     const s = this.board.read();
     if (s.preparation?.id !== requestID || s.preparation.status !== 'pending') return;
     Object.assign(s.preparation, failure ? { status: 'error', message: failure } : { status: 'ready', ...result, model });

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { sha256 } from './sha256.mjs';
 import { check, fields, id, revision } from './validation.mjs';
 
 export function decisionSpec(pack, language) {
@@ -65,7 +65,7 @@ export class Decisions {
     };
     const trace = {
       decision_id: body.decision_id, session_revision: s.revision, decision_spec_id: spec.id,
-      candidate_set_version: spec.version, state_hash: createHash('sha256').update(JSON.stringify(packet)).digest('hex'),
+      candidate_set_version: spec.version, state_hash: sha256(JSON.stringify(packet)),
       requested_model: this.cfg.model, actual_model: null, started_at: new Date().toISOString(),
       disposition: 'pending', choice: null, probabilities: null, confidence: null,
       latency_ms: null, command_id: null, applied_revision: null,
@@ -123,7 +123,7 @@ export class Decisions {
     if (showing && s.scaffold.language_support === 'chunks' && s.scaffold.visible_hint_ids.length === 1 && s.scaffold.visible_hint_ids[0] === hint) return finish('ignored', 'cue_already_visible');
     if (!showing && s.scaffold.language_support === 'none') return finish('ignored', 'already_hidden');
     if (Date.now() - s.cue_changed_at < this.cfg.minCueMs) return finish('blocked', 'minimum_cue_display_time');
-    trace.command_id = `jev-${randomUUID()}`;
+    trace.command_id = `jev-${crypto.randomUUID()}`;
     // The state write and its decision trace are committed together; no async gap.
     this.store.transaction(() => {
       const applied = this.runtime.command(session, {

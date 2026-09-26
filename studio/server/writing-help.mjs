@@ -1,9 +1,7 @@
-import { readFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
 import { check, fields, id, oneOf, text } from './validation.mjs';
-import { geminiJSON, geminiError } from './gemini.mjs';
+import { textJSON, textError, textConfigured, textKeyMissing } from './llm.mjs';
+import { prompt } from './prompts.mjs';
 
-const instructions = readFileSync(new URL('../prompts/writing-help.txt', import.meta.url), 'utf8');
 const keys = ['status', 'meaning', 'word', 'phrase', 'continuation', 'note'];
 const schema = { type: 'object', properties: Object.fromEntries(keys.map(k => [k, k === 'status'
   ? { type: 'string', enum: ['continue', 'revise', 'complete'] } : { type: 'string' }])), required: keys, additionalProperties: false };
@@ -14,7 +12,7 @@ function validate(value) {
   return value;
 }
 export async function callWritingHelp(packet, cfg, request = fetch) {
-  const result = await geminiJSON(packet, cfg, { instructions, schema, tokens: 4096, limit: 14000, purpose: 'writing_help' }, request);
+  const result = await textJSON(packet, cfg, { instructions: prompt('writing-help'), schema, tokens: 4096, limit: 14000, purpose: 'writing_help' }, request);
   return { ...validate(result.value), model: result.model };
 }
 function opening(value, language, count) {
@@ -69,13 +67,13 @@ export class WritingHelp {
     if (entry?.error && body.retry) { this.cache.delete(key); entry = null; }
     if (!entry) {
       const local = localWritingHelp(r, body.draft, body.caret, hintLanguage);
-      check(local || this.cfg.geminiKey, '本地参考可直接提示；其它表达需要配置 GEMINI_API_KEY。', 503);
+      check(local || textConfigured(this.cfg), `本地参考可直接提示；其它表达需要先配好文字服务。${textKeyMissing(this.cfg)}`, 503);
       check(local || this.pending < 2, '正在准备其它提示，可以继续写，稍后再按 Option + /。', 429);
       const collection = s.collections?.find(c => c.id === r.collection_id);
       const packet = { language: r.language, hint_language: hintLanguage, intended_meaning: r.meaning, reference: r.reference, draft: body.draft,
         before_cursor: body.draft.slice(0, body.caret), after_cursor: body.draft.slice(body.caret),
         ...(collection ? { expression_context: { summary: collection.outline.summary, purpose: r.unit.purpose, connection: r.unit.connection } } : {}) };
-      entry = { id: randomUUID(), round_id: r.id, window_start: r.window_start, draft: body.draft, caret: body.caret, seen: new Set() };
+      entry = { id: crypto.randomUUID(), round_id: r.id, window_start: r.window_start, draft: body.draft, caret: body.caret, seen: new Set() };
       this.cache.set(key, entry);
       if (!local) this.pending++;
       entry.promise = (async () => {
@@ -83,7 +81,7 @@ export class WritingHelp {
           const result = local ? { ...local, model: 'prepared-reference' } : await this.infer(packet, this.cfg);
           fields(result, [...keys, 'model'], [...keys, 'model']); text(result.model, 100);
           entry.result = { hint_id: entry.id, ...validate(Object.fromEntries(keys.map(k => [k, result[k]]))), provider: local ? 'local' : 'gemini', model: result.model };
-        } catch (e) { entry.error = geminiError(e); }
+        } catch (e) { entry.error = textError(e); }
         finally { if (!local) this.pending--; entry.finished = true; }
       })();
       for (const [oldKey, old] of this.cache) if (this.cache.size > 64 && old.finished && old !== entry) this.cache.delete(oldKey);

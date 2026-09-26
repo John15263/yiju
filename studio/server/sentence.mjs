@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { check, fields, id, oneOf, revision, text } from './validation.mjs';
 import { prepareCloze, slotsOf, sentenceFrom } from './cloze.mjs';
 import { validateOutline, unitDetails } from './expression.mjs';
@@ -21,15 +20,9 @@ export function validateMaterial(p) {
 export class SentenceBoard {
   constructor(store, publish = () => {}) {
     this.store = store; this.publish = publish;
-    store.db.exec('CREATE TABLE IF NOT EXISTS sentence_board (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL)');
   }
-  read() {
-    const row = this.store.db.prepare('SELECT body FROM sentence_board WHERE id=1').get();
-    return row ? JSON.parse(row.body) : empty();
-  }
-  save(s) {
-    this.store.db.prepare('INSERT INTO sentence_board VALUES (1,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body').run(JSON.stringify(s));
-  }
+  read() { return this.store.board() || empty(); }
+  save(s) { this.store.saveBoard(s); }
   public(s) {
     const active = s.rounds.find(r => r.id === s.active_id) || null;
     const collection = s.collections?.find(c => c.id === active?.collection_id);
@@ -78,7 +71,7 @@ export class SentenceBoard {
     const event = (kind, detail = null) => r.support_events.push({ kind, detail, level: r.support_level, at: now(), revision: s.revision + 1 });
     if (['new', 'accept_preparation', 'repeat'].includes(body.type)) {
       const build = (material, segments, provenance, phrases) => {
-        const next = { ...validateMaterial(material), id: randomUUID(), stage: 'study', support_level: 3, attempts: [], feedback: [], support_events: [],
+        const next = { ...validateMaterial(material), id: crypto.randomUUID(), stage: 'study', support_level: 3, attempts: [], feedback: [], support_events: [],
           window_start: null, created_at: now(), updated_at: now() };
         if (segments) next.cloze = prepareCloze({ segments }, next);
         if (phrases) next.phrases = phraseState(phrases, next.reference);
@@ -95,7 +88,7 @@ export class SentenceBoard {
         const provenance = { provider: 'gemini', model: draft.model, preparation_id: draft.id,
           source: draft.source, focus: draft.focus, confirmed_at: now() };
         if (draft.units) {
-          const outline = validateOutline(draft.outline), collectionID = randomUUID();
+          const outline = validateOutline(draft.outline), collectionID = crypto.randomUUID();
           check(Array.isArray(draft.units) && draft.units.length >= 1 && draft.units.length <= 12, 'Invalid expression units');
           // Validate every unit before changing history or publishing anything.
           created = draft.units.map((unit, index) => {
@@ -144,7 +137,7 @@ export class SentenceBoard {
         case 'cloze_submit': {
           fields(p, ['source']); check(r.stage === 'cloze', '当前不是填空练习。', 409);
           check(slotsOf(r).every(slot => r.cloze.inputs[slot.id].text.trim()), '先填完所有空格再提交。');
-          r.attempts.push({ id: randomUUID(), text: sentenceFrom(r), source: oneOf(p.source || 'typed_original', ['typed_original', 'simulation']), at: now(),
+          r.attempts.push({ id: crypto.randomUUID(), text: sentenceFrom(r), source: oneOf(p.source || 'typed_original', ['typed_original', 'simulation']), at: now(),
             support_level: 2, support_events: structuredClone(r.support_events.slice(r.window_start)), previous_support_count: r.window_start,
             evidence_scope: 'prompted_cloze', cloze: structuredClone(r.cloze), learned: learnedSummary(r),
             note: '在给定句子结构中填空，不等于独立生成整句。' });
@@ -171,7 +164,7 @@ export class SentenceBoard {
           check(r.stage === 'practice', '先开始一次表达，再保存实际回答。', 409);
           text(p.text, 4000); oneOf(p.source, ['typed_original', 'user_revision', 'voice_transcript', 'simulation']);
           if (p.parent_attempt_id != null) check(r.attempts.some(a => a.id === p.parent_attempt_id), 'Unknown parent attempt');
-          r.attempts.push({ id: randomUUID(), ...p, at: now(), support_level: r.support_level,
+          r.attempts.push({ id: crypto.randomUUID(), ...p, at: now(), support_level: r.support_level,
             support_events: structuredClone(r.support_events.slice(r.window_start)),
             previous_support_count: r.window_start, learned: learnedSummary(r),
             note: '先前看过示范；本次记录不证明长期掌握。' });

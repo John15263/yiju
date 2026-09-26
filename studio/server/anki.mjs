@@ -20,19 +20,16 @@ export function clozeCard(quiz, r) {
 
 export class Anki {
   constructor(store, cfg, request = fetch) {
-    this.db = store.db; this.url = cfg.ankiUrl; this.deck = cfg.ankiDeck; this.request = request;
+    this.store = store; this.url = cfg.ankiUrl; this.deck = cfg.ankiDeck; this.request = request;
     // Only the real practice server pushes; tests and previews keep cards in the outbox, away from the learner's Anki.
     this.live = cfg.ankiPush === true;
     this.flushing = null; this.lastError = ''; this.lastPushed = null;
-    this.db.exec(`CREATE TABLE IF NOT EXISTS anki_outbox (id INTEGER PRIMARY KEY, created_at TEXT NOT NULL, quiz_id TEXT UNIQUE,
-      body TEXT NOT NULL, status TEXT NOT NULL, note_id INTEGER, error TEXT, pushed_at TEXT)`);
   }
   // Retried in the background, so a card made while Anki was closed goes over once it is opened.
   start(every = 5 * 60 * 1000) { this.timer = setInterval(() => { void this.flush(); }, every); this.timer.unref?.(); void this.flush(); }
   enqueue(card) {
     try {
-      this.db.prepare('INSERT OR IGNORE INTO anki_outbox (created_at, quiz_id, body, status) VALUES (?,?,?,?)')
-        .run(new Date().toISOString(), card.quiz_id, JSON.stringify(card), 'pending');
+      this.store.ankiEnqueue(card, new Date().toISOString());
     } catch { return; }
     void this.flush();
   }
@@ -60,31 +57,30 @@ export class Anki {
   }
   async push() {
     if (!this.live) return;
-    const rows = this.db.prepare("SELECT id, body FROM anki_outbox WHERE status = 'pending' ORDER BY id").all();
+    const rows = this.store.ankiPending();
     if (!rows.length) return;
     let model;
     try { model = await this.model(); await this.call('createDeck', { deck: this.deck }); }
     catch (e) { this.lastError = e.anki ? e.message : `连不上 Anki（${this.url}）：Anki 没打开，或者 AnkiConnect 没在这个端口上`; return; }
     this.lastError = '';
     for (const row of rows) {
-      const card = JSON.parse(row.body);
+      const card = row.card;
       try {
         const noteID = await this.call('addNote', { note: { deckName: this.deck, modelName: model.name,
           fields: { [model.text]: card.text, ...(model.extra ? { [model.extra]: card.extra } : {}) }, tags: card.tags, options: { allowDuplicate: false } } });
-        this.db.prepare("UPDATE anki_outbox SET status='sent', note_id=?, pushed_at=? WHERE id=?").run(noteID, new Date().toISOString(), row.id);
+        this.store.ankiMark(row.id, { status: 'sent', note_id: noteID, pushed_at: new Date().toISOString() });
         this.lastPushed = new Date().toISOString();
       } catch (e) {
         if (!e.anki) { this.lastError = `推送中途连不上 Anki（${this.url}）`; return; }
         // Already in the deck: that is what was wanted.
         const duplicate = /duplicate/i.test(e.message);
-        this.db.prepare('UPDATE anki_outbox SET status=?, error=?, pushed_at=? WHERE id=?')
-          .run(duplicate ? 'sent' : 'failed', duplicate ? null : e.message.slice(0, 300), new Date().toISOString(), row.id);
+        this.store.ankiMark(row.id, { status: duplicate ? 'sent' : 'failed', error: duplicate ? null : e.message.slice(0, 300), pushed_at: new Date().toISOString() });
         if (!duplicate) this.lastError = e.message;
       }
     }
   }
   status() {
-    const counts = Object.fromEntries(this.db.prepare('SELECT status, COUNT(*) AS n FROM anki_outbox GROUP BY status').all().map(r => [r.status, r.n]));
+    const counts = this.store.ankiCounts();
     return { deck: this.deck, url: this.url, sent: counts.sent || 0, pending: counts.pending || 0, failed: counts.failed || 0,
       last_error: this.lastError, last_pushed: this.lastPushed };
   }
