@@ -11,7 +11,7 @@ import { createQuizUI } from './quiz.js';
 import { createExplainUI } from './explain.js';
 import { voiceMode, chunkComparison, loose } from './voice-mode.js';
 import { deskView, markup, openQuiz, supportSummary, SUPPORT_LEVELS } from './view.js';
-import { request, subscribe, speak } from './backend.js';
+import { request, subscribe, speak, onSource } from './backend.js';
 import { createSettings } from './settings.js';
 const $ = id => document.getElementById(id);
 let state = null, busy = false, reviewBusy = false, settings = null, writingKey = null, drawer = null;
@@ -415,6 +415,12 @@ async function loadConfig() {
   } catch (e) { error(new Error(`无法读取服务设置：${e.message}`)); }
 }
 $('settings-open').onclick = () => void settingsUI.open();
+// Something to practise on without writing anything first: a short, made-up paragraph.
+const EXAMPLE = '我最近开始学做饭。周末常常给朋友做几道家常菜，不过切菜的时候总是特别小心，怕伤到手。';
+const takeSource = text => { composeUI.useWriting(text); render(state); $('source-text').focus(); };
+$('use-example').onclick = () => takeSource(EXAMPLE);
+// Text chosen with the extension's right-click menu on another page becomes a new idea to practise.
+onSource(takeSource);
 void loadConfig();
 const connection = (text, trouble) => { put('connection', text); show('connection', trouble); };
 // The first build this page hears is its own; a different one after a reconnect means the server was

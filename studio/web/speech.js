@@ -103,7 +103,7 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
         const response = await fetcher('/api/sentence/speak', { method: 'POST', signal: item.control.signal,
           headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: words, language }) });
         if (!response.ok) throw new Error((await response.json().catch(() => null))?.error || `HTTP ${response.status}`);
-        item.voice = response.headers.get('X-Voice') || 'Gemini';
+        item.voice = decodeURIComponent(response.headers.get('X-Voice') || '') || 'Gemini';
         const reader = response.body.getReader();
         let carry = null;
         for (;;) {

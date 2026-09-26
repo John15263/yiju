@@ -1,0 +1,6 @@
+{
+  "extensionName": { "message": "一句 · 把想说的话练成英语日语" },
+  "extensionDescription": { "message": "从你想说的中文出发，练成英语或日语：逐块先学再默写、整句点评、改错小测、语音陪练，可推送 Anki。用你自己的 API key。" },
+  "actionTitle": { "message": "打开一句" },
+  "contextTitle": { "message": "用一句练这段话" }
+}

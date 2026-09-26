@@ -1,0 +1,6 @@
+{
+  "extensionName": { "message": "Yiju 一句 · Say it in English or Japanese" },
+  "extensionDescription": { "message": "Turn what you want to say in Chinese into English or Japanese: learn it chunk by chunk, write it from memory, get feedback." },
+  "actionTitle": { "message": "Open Yiju (一句)" },
+  "contextTitle": { "message": "Practise this with Yiju (一句)" }
+}

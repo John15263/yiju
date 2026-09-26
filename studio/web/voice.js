@@ -56,7 +56,8 @@ export function createVoiceUI({ getState, render, error, draftOf, quiet = () => 
     addEventListener('pagehide', () => channel.postMessage({ type: 'bye', id: pageID }));
   } catch {}
   let call = null, capture = null, stream = null, playback = null, playHead = 0, sources = new Set();
-  let status = '', live = false, startedAt = 0, ticker = null, lines = [], settings = null, sentDraft = '', usd = 0;
+  // usd stays undefined until the service first reports what a turn used; null means its price is not known here.
+  let status = '', live = false, startedAt = 0, ticker = null, lines = [], settings = null, sentDraft = '', usd;
   // A start that is still opening the microphone is abandoned the moment a stop or a newer start comes.
   let sessionKey = '', scopeKey = '', sessionMode = '', generation = 0;
   // The whole sentence's conversations stay readable: the recorded ones come from the practice state, the
@@ -81,7 +82,7 @@ export function createVoiceUI({ getState, render, error, draftOf, quiet = () => 
     $('voice-hint-learn').hidden = mode !== 'learn';
     $('voice-hint-fix').hidden = !['fix', 'review'].includes(mode);
     $('voice-open').textContent = running ? `● 语音 ${elapsed()}` : LABELS[mode];
-    $('voice-cost').textContent = running ? ` · ${money(usd)}` : '';
+    $('voice-cost').textContent = running && usd !== undefined ? ` · ${money(usd)}` : '';
     paintTranscript(r, part);
   }
   function liveState() {
@@ -205,7 +206,7 @@ export function createVoiceUI({ getState, render, error, draftOf, quiet = () => 
       paint(); return;
     }
     const run = ++generation;
-    live = true; lines = []; sentDraft = ''; usd = 0; startedAt = Date.now(); sessionID = '';
+    live = true; lines = []; sentDraft = ''; usd = undefined; startedAt = Date.now(); sessionID = '';
     sessionKey = `${r.id}:${r.window_start}`; scopeKey = mode.key; sessionMode = mode.mode;
     sessionHeading = sessionLabel(mode.mode === 'write' ? r.stage : mode.mode, mode.correction?.index ?? (r.stage === 'phrases' ? r.phrases.index : null));
     status = ''; paint();
@@ -252,7 +253,7 @@ export function createVoiceUI({ getState, render, error, draftOf, quiet = () => 
     generation++;
     if (!live && !call) return;
     // Time and cost only for a call that actually got through.
-    if (live && sessionID) status = `${status || '语音已结束。'} 用时 ${elapsed()} · ${usd === null ? money(usd) : `实际花费 ${money(usd)}`}`;
+    if (live && sessionID) status = `${status || '语音已结束。'} 用时 ${elapsed()}${usd === undefined ? '' : usd === null ? ` · ${money(usd)}` : ` · 实际花费 ${money(usd)}`}`;
     live = false;
     // What was just said stays on screen until the recorded copy of it arrives.
     if (sessionID && lines.some(line => line.role !== 'moved')) ended = { id: sessionID, round: getState()?.active?.id, heading: sessionHeading, lines };

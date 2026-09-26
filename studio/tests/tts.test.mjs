@@ -70,6 +70,6 @@ test('an explanation line is read in the explaining voice, kept on disk, and hea
   await speech.stream(line, {}, again);
   assert.equal(sent.length, 1, 'not asked for again');
   assert.deepEqual([...Buffer.concat(again.chunks)], [7, 8], 'the same audio, from disk');
-  assert.match(again.head.headers['X-Voice'], /已存，不花钱/);
+  assert.match(decodeURIComponent(again.head.headers['X-Voice']), /已存，不花钱/, 'the header is sent encoded: a header may only carry Latin-1');
   await assert.rejects(speech.stream({ ...line, kind: 'song' }, {}, fakeRes()), /Invalid option/);
 });

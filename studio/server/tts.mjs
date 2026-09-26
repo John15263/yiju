@@ -37,6 +37,8 @@ export function diskCache(dir) {
     write(name, bytes) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path(name), bytes); prune(); },
   };
 }
+// A header may only carry Latin-1: Node refuses anything else (ERR_INVALID_CHAR), and so does a browser's Response.
+const voiceHeader = value => encodeURIComponent(value);
 const fromBase64 = value => { const binary = atob(value), bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return bytes; };
 const concat = parts => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let at = 0; for (const p of parts) { out.set(p, at); at += p.length; } return out; };
 
@@ -50,7 +52,8 @@ export function usageOf(u) {
 
 export class Speech {
   constructor(cfg, request = fetch) {
-    this.cfg = cfg; this.request = request;
+    // Called on its own: a browser's fetch refuses to run as a method of this object ("Illegal invocation").
+    this.cfg = cfg; this.request = (...args) => request(...args);
     this.cache = cfg.ttsCache || (cfg.ttsCacheDir ? diskCache(cfg.ttsCacheDir) : null);
   }
   // `res` is the local server's HTTP response, or anything with its writeHead, write, end and on('close').
@@ -64,7 +67,7 @@ export class Speech {
     const name = this.cache ? sha256(JSON.stringify([model, voice, style, words])) : null;
     const pcm = name ? await this.cache.read(name) : null;
     if (pcm) {
-      res.writeHead(200, { 'Content-Type': 'audio/l16; rate=24000; channels=1', 'X-Voice': `${model} · ${voice} · 已存，不花钱` });
+      res.writeHead(200, { 'Content-Type': 'audio/l16; rate=24000; channels=1', 'X-Voice': voiceHeader(`${model} · ${voice} · 已存，不花钱`) });
       res.end(pcm); return;
     }
     check(this.cfg.geminiKey, '朗读用的是 Gemini，请在「设置」里填写 Gemini 的 API key，或者改用浏览器自带的朗读。', 503);
@@ -81,7 +84,7 @@ export class Speech {
           generation_config: { speech_config: [{ voice }] } }) });
     } catch { clearTimeout(timeout); check(false, 'Gemini 朗读连接不上或超时。', 502); }
     if (!upstream.ok) { clearTimeout(timeout); check(false, `Gemini 朗读没有接受请求（HTTP ${upstream.status}）。`, 502); }
-    res.writeHead(200, { 'Content-Type': 'audio/l16; rate=24000; channels=1', 'X-Voice': `${model} · ${voice}` });
+    res.writeHead(200, { 'Content-Type': 'audio/l16; rate=24000; channels=1', 'X-Voice': voiceHeader(`${model} · ${voice}`) });
     let usage = null, buffer = '';
     const kept = [];
     const handle = block => {

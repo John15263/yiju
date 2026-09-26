@@ -20,7 +20,9 @@ export function clozeCard(quiz, r) {
 
 export class Anki {
   constructor(store, cfg, request = fetch) {
-    this.store = store; this.cfg = cfg; this.url = cfg.ankiUrl; this.deck = cfg.ankiDeck; this.request = request;
+    this.store = store; this.cfg = cfg; this.url = cfg.ankiUrl; this.deck = cfg.ankiDeck;
+    // Called on its own: a browser's fetch refuses to run as a method of this object ("Illegal invocation").
+    this.request = (...args) => request(...args);
     this.flushing = null; this.lastError = ''; this.lastPushed = null;
   }
   // Only a runner that turned pushing on pushes; tests and previews keep cards in the outbox, away from the learner's Anki.

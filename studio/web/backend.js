@@ -46,3 +46,6 @@ export function openVoice(params, on) {
 // Anki is reached through AnkiConnect on this computer; the local server needs no permission for that.
 export const allowAnki = async () => true;
 export const ankiNote = 'Anki 要开着，并装好 AnkiConnect 插件（代码 2055492159）。';
+
+// Text sent from another page arrives only in the browser extension (its right-click menu).
+export function onSource() {}
