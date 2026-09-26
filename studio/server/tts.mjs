@@ -1,7 +1,5 @@
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { check, fields, oneOf, text } from './validation.mjs';
+import { sha256 } from './sha256.mjs';
 
 // Hints read aloud by Gemini's speech models instead of the browser's own voices, which in Chrome went
 // silent without saying why. The key stays here: the page sends the words and gets back raw audio as it
@@ -16,14 +14,31 @@ const STYLE = {
 };
 // An explanation is Chinese with the foreign words left as they are; each is said in its own language.
 const EXPLAIN_STYLE = '一位温和耐心的中文老师在给学生讲外语，吐字清楚，语速自然；遇到英语或日语的词句，用那门语言地道的发音念出来';
-// Everything said is kept on disk by what was said and how, so hearing it again costs nothing: a script
-// replayed when a sentence is practised again, the fixed hint lines that recur. Oldest go past the cap.
+// Everything said is kept by what was said and how, so hearing it again costs nothing: a script replayed when a
+// sentence is practised again, the fixed hint lines that recur. Oldest go past the cap. The local server keeps
+// it on disk (ttsCacheDir); the extension hands over its own store as ttsCache, with the same read and write.
 const CACHE_CAP = 300 * 1024 * 1024;
-function prune(dir) {
-  const files = readdirSync(dir).filter(f => f.endsWith('.pcm')).map(f => ({ f, ...statSync(join(dir, f)) })).sort((a, b) => a.mtimeMs - b.mtimeMs);
-  let total = files.reduce((n, x) => n + x.size, 0);
-  for (const x of files) { if (total <= CACHE_CAP * 0.8) break; try { unlinkSync(join(dir, x.f)); total -= x.size; } catch {} }
+export function diskCache(dir) {
+  // Asked for at run time rather than imported, so this module also loads where there is no Node.
+  const fs = globalThis.process?.getBuiltinModule?.('node:fs');
+  if (!fs) return null;
+  const path = name => `${dir}/${name}.pcm`;
+  const prune = () => {
+    const files = fs.readdirSync(dir).filter(f => f.endsWith('.pcm')).map(f => ({ f, ...fs.statSync(`${dir}/${f}`) })).sort((a, b) => a.mtimeMs - b.mtimeMs);
+    let total = files.reduce((n, x) => n + x.size, 0);
+    for (const x of files) { if (total <= CACHE_CAP * 0.8) break; try { fs.unlinkSync(`${dir}/${x.f}`); total -= x.size; } catch {} }
+  };
+  return {
+    read(name) {
+      if (!fs.existsSync(path(name))) return null;
+      try { const t = new Date(); fs.utimesSync(path(name), t, t); } catch {}
+      return fs.readFileSync(path(name));
+    },
+    write(name, bytes) { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path(name), bytes); prune(); },
+  };
 }
+const fromBase64 = value => { const binary = atob(value), bytes = new Uint8Array(binary.length); for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i); return bytes; };
+const concat = parts => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let at = 0; for (const p of parts) { out.set(p, at); at += p.length; } return out; };
 
 // The interactions API reports usage in its own shape; metering reads the generateContent one.
 export function usageOf(u) {
@@ -34,22 +49,25 @@ export function usageOf(u) {
 }
 
 export class Speech {
-  constructor(cfg, request = fetch) { this.cfg = cfg; this.request = request; }
+  constructor(cfg, request = fetch) {
+    this.cfg = cfg; this.request = request;
+    this.cache = cfg.ttsCache || (cfg.ttsCacheDir ? diskCache(cfg.ttsCacheDir) : null);
+  }
+  // `res` is the local server's HTTP response, or anything with its writeHead, write, end and on('close').
   async stream(input, req, res) {
     fields(input, ['text', 'language', 'kind'], ['text', 'language']);
     text(input.text, 400); check(input.text.trim(), 'Invalid text');
     check(Object.hasOwn(STYLE, input.language), 'Invalid language');
     const kind = input.kind === undefined ? 'hint' : oneOf(input.kind, ['hint', 'explain']);
     const words = input.text.trim(), style = kind === 'explain' ? EXPLAIN_STYLE : STYLE[input.language];
-    const model = this.cfg.geminiTtsModel, voice = this.cfg.geminiTtsVoice, dir = this.cfg.ttsCacheDir;
-    const file = dir ? join(dir, `${createHash('sha256').update(JSON.stringify([model, voice, style, words])).digest('hex')}.pcm`) : null;
-    if (file && existsSync(file)) {
-      const pcm = readFileSync(file);
-      try { const t = new Date(); utimesSync(file, t, t); } catch {}
+    const model = this.cfg.geminiTtsModel, voice = this.cfg.geminiTtsVoice;
+    const name = this.cache ? sha256(JSON.stringify([model, voice, style, words])) : null;
+    const pcm = name ? await this.cache.read(name) : null;
+    if (pcm) {
       res.writeHead(200, { 'Content-Type': 'audio/l16; rate=24000; channels=1', 'X-Voice': `${model} · ${voice} · 已存，不花钱` });
       res.end(pcm); return;
     }
-    check(this.cfg.geminiKey, '请在 .env 中填写 GEMINI_API_KEY 并重启服务。', 503);
+    check(this.cfg.geminiKey, '朗读用的是 Gemini，请在「设置」里填写 Gemini 的 API key，或者改用浏览器自带的朗读。', 503);
     // A newer hint, or the page going away, drops the request so no audio nobody hears is paid for.
     const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 20000);
     res.on('close', () => abort.abort());
@@ -71,12 +89,14 @@ export class Speech {
       if (!line) return;
       let event;
       try { event = JSON.parse(line.slice(5)); } catch { return; }
-      if (typeof event.delta?.data === 'string' && event.delta.type !== 'text') { const pcm = Buffer.from(event.delta.data, 'base64'); kept.push(pcm); res.write(pcm); }
+      if (typeof event.delta?.data === 'string' && event.delta.type !== 'text') { const pcm = fromBase64(event.delta.data); kept.push(pcm); res.write(pcm); }
       usage = event.interaction?.usage || event.usage || usage;
     };
     try {
-      const decoder = new TextDecoder();
-      for await (const chunk of upstream.body) {
+      const decoder = new TextDecoder(), reader = upstream.body.getReader();
+      for (;;) {
+        const { value: chunk, done } = await reader.read();
+        if (done) break;
         buffer += decoder.decode(chunk, { stream: true });
         let end;
         while ((end = buffer.indexOf('\n\n')) >= 0) { handle(buffer.slice(0, end)); buffer = buffer.slice(end + 2); }
@@ -88,8 +108,8 @@ export class Speech {
       // Billed whether or not it was heard to the end.
       if (usage) this.cfg.usage?.record({ purpose: kind === 'explain' ? 'explain_speech' : 'hint_speech', model, usage: usageOf(usage) });
       // Only a reading that came through whole is kept.
-      if (file && usage && kept.length && !abort.signal.aborted) {
-        try { mkdirSync(dir, { recursive: true }); writeFileSync(file, Buffer.concat(kept)); prune(dir); } catch {}
+      if (name && usage && kept.length && !abort.signal.aborted) {
+        try { await this.cache.write(name, concat(kept)); } catch {}
       }
       res.end();
     }

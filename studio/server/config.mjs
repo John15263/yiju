@@ -80,6 +80,8 @@ export function config(env = process.env) {
     qwenTextModel, qwenThinking, dashscopeKey: env.DASHSCOPE_API_KEY?.trim() || '', dashscopeRegion, dashscopeWorkspace,
     voiceProvider, geminiLiveModel, voiceThinkingLevel, qwenRealtimeModel, qwenVoice,
     speechProvider, geminiTtsModel, geminiTtsVoice,
+    // Cards are pushed only where the runner turns this on: the local server by default, the extension when asked.
+    ankiPush: choice('ANKI_PUSH', ['on', 'off'], 'off') === 'on',
     // The calls the learner waits on while writing. With the full model thinking first, a check takes
     // 2.5–5 s and a hint about 6 s (measured 2026-09-23), so the limit leaves room above that.
     geminiNoteTimeout: number('GEMINI_NOTE_TIMEOUT_MS', 20000, 1000, 60000),

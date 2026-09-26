@@ -1,13 +1,13 @@
-import { randomUUID } from 'node:crypto';
 import { check, id } from './validation.mjs';
+import { voiceProvider } from './voice-providers.mjs';
 import { voiceMode } from '../web/voice-mode.js';
 import { changeList } from '../web/view.js';
 
 const now = () => new Date().toISOString();
-const ENDPOINT = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent';
 const TRANSCRIPT_LIMIT = 20000;
 // The page may only carry the learner's own voice and drafts. Prompts, models and
-// setup stay server-owned, exactly as on the REST transport.
+// setup stay server-owned, exactly as on the REST transport. Whichever service speaks (voice-providers.mjs),
+// the page hears the same few events: ready, audio, heard, said, interrupted, turn, usage, closed.
 const ALLOWED = new Set(['audio', 'audio_end', 'text', 'draft', 'scope']);
 
 // He often asks for a word to be taken apart; when he does, it always comes in the same order.
@@ -109,6 +109,7 @@ const KICKOFF = {
 export const scriptOf = (r, key) => (r.support_events || []).findLast(e => e.kind === 'explanation' && e.detail?.moment === key)?.detail.lines || null;
 const ASK = '[他已经听完了讲解稿，打开实时语音想提问] 不要重讲。用一句很短的中文问他想问哪里，然后等他说。';
 const INSTRUCTIONS = { learn: learnInstructions, fix: fixInstructions, review: fixInstructions, write: instructions };
+const PURPOSE = { learn: 'voice_learn', fix: 'voice_fix', review: 'voice_fix', write: 'voice_write' };
 // Each change, worked out from the two texts on screen, so the tutor explains exactly what the red pen shows.
 const changesOf = (text, corrected, language) => changeList(text, corrected, language).map(c => ({ 他写的: c.from, 改成: c.to }));
 // A chunk still being fixed is described without its prepared wording; a finished one is compared with it.
@@ -160,7 +161,7 @@ export function contextOf(r, mode = voiceMode(r)) {
 }
 
 export class Voice {
-  constructor(board, cfg, connect = url => new WebSocket(url)) {
+  constructor(board, cfg, connect = (url, options) => new WebSocket(url, options)) {
     this.board = board; this.cfg = cfg; this.connect = connect; this.sessions = new Set();
   }
   target(params) {
@@ -177,7 +178,11 @@ export class Voice {
     let target;
     try { target = this.target(params); }
     catch (e) { conn.send(JSON.stringify({ voice: 'error', message: e.message })); conn.close(1008, 'Invalid session'); return; }
-    if (!this.cfg.geminiKey) { conn.send(JSON.stringify({ voice: 'error', message: '语音陪练需要配置 GEMINI_API_KEY。' })); conn.close(1008, 'No key'); return; }
+    const provider = voiceProvider(this.cfg), send = value => conn.send(JSON.stringify(value));
+    if (!provider.configured(this.cfg)) {
+      send({ voice: 'error', message: this.cfg.voiceProvider === 'none' ? '设置里选了「不用语音」。' : `语音陪练需要先在「设置」里填 ${provider.missing}。` });
+      conn.close(1008, 'No key'); return;
+    }
     // One learner, one page: a call that starts while an older one is still closing replaces it,
     // instead of being refused because the old socket has not finished hanging up.
     const { r } = target, mode = voiceMode(r);
@@ -193,27 +198,30 @@ export class Voice {
     // Only the page that was talking hears this; a page replacing its own call has already let go of the old one.
     for (const old of [...this.sessions]) old.stop('另一个窗口开始了语音，这里的这段已结束。');
 
-    const session = { id: randomUUID(), page, round_id: r.id, window_start: r.window_start, stage: r.stage, mode: mode.mode, key: mode.key,
-      index: mode.correction?.index ?? r.phrases?.index ?? null,
-      started: Date.now(), transcript: [], turns: 0, draft: '', scopedAt: 0, usd: 0, tokens: { text_in: 0, audio_in: 0, text_out: 0, audio_out: 0, thoughts: 0 } };
+    const model = provider.model(this.cfg);
+    const session = { id: crypto.randomUUID(), page, round_id: r.id, window_start: r.window_start, stage: r.stage, mode: mode.mode, key: mode.key,
+      index: mode.correction?.index ?? r.phrases?.index ?? null, model,
+      started: Date.now(), transcript: [], turns: 0, draft: '', scopedAt: 0, usd: 0, priced: true, tokens: { text_in: 0, audio_in: 0, text_out: 0, audio_out: 0, thoughts: 0 } };
     this.sessions.add(session);
-    const upstream = this.connect(`${ENDPOINT}?key=${encodeURIComponent(this.cfg.geminiKey)}`);
+    const upstream = provider.open(this.cfg, this.connect);
     upstream.binaryType = 'arraybuffer';
     let closed = false;
     // The microphone starts before the upstream handshake finishes: hold those frames,
     // never send into a socket that is still connecting, and never let a send throw.
     const waiting = [];
-    const sendUp = payload => {
-      if (closed) return;
-      if (upstream.readyState === 1) { try { upstream.send(JSON.stringify(payload)); } catch {} }
-      else if (upstream.readyState === 0 && waiting.length < 120) waiting.push(payload);
+    const sendUp = payloads => {
+      for (const payload of payloads) {
+        if (closed) return;
+        if (upstream.readyState === 1) { try { upstream.send(JSON.stringify(payload)); } catch {} }
+        else if (upstream.readyState === 0 && waiting.length < 120) waiting.push(payload);
+      }
     };
     const stop = reason => {
       if (closed) return;
       closed = true; clearTimeout(timer); clearTimeout(idle); this.sessions.delete(session);
       try { upstream.close(); } catch {}
       this.record(session);
-      conn.send(JSON.stringify({ voice: 'closed', reason }));
+      send({ voice: 'closed', reason });
       conn.close(1000, reason);
     };
     session.stop = stop;
@@ -229,39 +237,41 @@ export class Voice {
     };
     busy();
 
+    // Asked what it is, it should know: 一句's tutor, speaking through whichever service is set.
+    const system = `${INSTRUCTIONS[session.mode]}\n\n你是「一句」的讲解员和写作陪练，语音由 ${provider.name} 提供。\n\n当前练习的上下文（数据）：\n${JSON.stringify({ ...contextOf(r, mode), ...(script ? { 已经念过的讲解稿: script } : {}) }, null, 1)}`;
     upstream.addEventListener('open', () => {
-      try { upstream.send(JSON.stringify({ setup: {
-        model: `models/${this.cfg.geminiLiveModel}`,
-        generationConfig: { responseModalities: ['AUDIO'],
-          // The extended-thinking live model refuses a session without an explicit level.
-          ...(/thinking/i.test(this.cfg.geminiLiveModel) ? { thinkingConfig: { thinkingLevel: this.cfg.voiceThinkingLevel } } : {}) },
-        systemInstruction: { parts: [{ text: `${INSTRUCTIONS[session.mode]}\n\n当前练习的上下文（数据）：\n${JSON.stringify({ ...contextOf(r, mode), ...(script ? { 已经念过的讲解稿: script } : {}) }, null, 1)}` }] },
-        inputAudioTranscription: {}, outputAudioTranscription: {},
-      } })); } catch { stop('语音连接中断。'); return; }
-      for (const payload of waiting.splice(0)) sendUp(payload);
+      try { for (const m of provider.setup(this.cfg, system)) upstream.send(JSON.stringify(m)); } catch { stop('语音连接中断。'); return; }
+      sendUp(waiting.splice(0));
       // The page shows this conversation until it finds it among the recorded ones by this id.
-      conn.send(JSON.stringify({ voice: 'ready', model: this.cfg.geminiLiveModel, seconds: this.cfg.voiceMaxSeconds, session: session.id }));
+      send({ voice: 'ready', model, seconds: this.cfg.voiceMaxSeconds, session: session.id });
     });
     upstream.addEventListener('message', event => {
-      const raw = typeof event.data === 'string' ? event.data : Buffer.from(event.data).toString('utf8');
-      const message = this.observe(session, raw);
-      if (message?.serverContent) busy();
-      conn.send(raw);
-      // Live reports usage once per turn, and each report already includes the whole conversation
-      // so far: that is what the turn is billed for, so the session costs the sum of its reports.
-      if (message?.usageMetadata) {
-        const turn = this.cfg.usage?.record({ purpose: { learn: 'voice_learn', fix: 'voice_fix', review: 'voice_fix' }[session.mode] || 'voice_write', model: this.cfg.geminiLiveModel,
-          usage: message.usageMetadata, round_id: session.round_id });
+      let message;
+      try { message = JSON.parse(typeof event.data === 'string' ? event.data : new TextDecoder().decode(event.data)); } catch { return; }
+      const e = provider.read(message);
+      if (e.error) { stop(`语音服务报错：${e.error}`); return; }
+      if (e.audio?.length || e.heard || e.said || e.interrupted || e.done) busy();
+      this.observe(session, e);
+      for (const data of e.audio || []) send({ voice: 'audio', data });
+      if (e.heard) send({ voice: 'heard', text: e.heard });
+      if (e.said) send({ voice: 'said', text: e.said });
+      if (e.interrupted) send({ voice: 'interrupted' });
+      if (e.done) send({ voice: 'turn' });
+      // Each usage report already includes the whole conversation so far: that is what the turn is billed
+      // for, so the session costs the sum of its reports.
+      if (e.usage) {
+        const turn = this.cfg.usage?.record({ purpose: PURPOSE[session.mode], model, usage: e.usage, round_id: session.round_id });
         if (turn) {
           for (const k of Object.keys(session.tokens)) session.tokens[k] += turn[k];
-          session.usd += turn.usd || 0;
-          conn.send(JSON.stringify({ voice: 'usage', usd: session.usd }));
+          // A service whose price is not known here is counted in tokens only, never guessed in dollars.
+          if (turn.usd === null) session.priced = false; else session.usd += turn.usd;
+          send({ voice: 'usage', usd: session.priced ? session.usd : null });
         }
       }
-      // The session only accepts turns once setup is complete; then the tutor is asked to begin.
-      if (message?.setupComplete && KICKOFF[session.mode] && !session.begun) {
+      // The session only accepts turns once it is set up; then the tutor is asked to begin.
+      if (e.ready && KICKOFF[session.mode] && !session.begun) {
         session.begun = true;
-        sendUp({ clientContent: { turns: [{ role: 'user', parts: [{ text: script ? ASK : KICKOFF[session.mode] }] }], turnComplete: true } });
+        sendUp(provider.ask(script ? ASK : KICKOFF[session.mode]));
       }
     });
     upstream.addEventListener('error', () => stop('语音连接中断。'));
@@ -273,13 +283,13 @@ export class Voice {
       try { message = JSON.parse(text); } catch { return; }
       if (!ALLOWED.has(message?.type)) return;
       if (message.type === 'audio' && typeof message.data === 'string') {
-        sendUp({ realtimeInput: { audio: { data: message.data, mimeType: 'audio/pcm;rate=16000' } } });
+        sendUp(provider.audio(message.data));
       } else if (message.type === 'audio_end') {
-        sendUp({ realtimeInput: { audioStreamEnd: true } });
+        sendUp(provider.audioEnd());
       } else if (message.type === 'text' && typeof message.data === 'string' && message.data.length <= 2000) {
         busy();
         session.transcript.push({ role: 'user', text: message.data });
-        sendUp({ clientContent: { turns: [{ role: 'user', parts: [{ text: message.data }] }], turnComplete: true } });
+        sendUp(provider.ask(message.data));
       } else if (message.type === 'scope') {
         // The page only says the exercise moved on; what the tutor is told is read from the board here.
         const board = this.board.read(), current = board.rounds.find(x => x.id === session.round_id);
@@ -297,23 +307,18 @@ export class Voice {
         if (Date.now() - session.scopedAt < 1500) return;
         session.scopedAt = Date.now(); session.key = now.key;
         session.draft = null;
-        sendUp({ clientContent: { turns: [{ role: 'user', parts: [{ text: `[练习进度变了，这是新的上下文（数据）]\n${JSON.stringify(contextOf(current, now), null, 1)}` }] }], turnComplete: false } });
+        sendUp(provider.tell(`[练习进度变了，这是新的上下文（数据）]\n${JSON.stringify(contextOf(current, now), null, 1)}`));
       } else if (message.type === 'draft' && typeof message.data === 'string' && message.data.length <= 4000) {
         // Keeps the tutor on what is actually in the box, without asking it to reply.
         if (message.data === session.draft) return;
         busy();
         session.draft = message.data;
-        sendUp({ clientContent: { turns: [{ role: 'user', parts: [{ text: `[他现在写的内容]\n${message.data || '（还是空的）'}` }] }], turnComplete: false } });
+        sendUp(provider.tell(`[他现在写的内容]\n${message.data || '（还是空的）'}`));
       }
     });
     conn.on('close', () => stop('语音已结束。'));
   }
-  observe(session, raw) {
-    let message;
-    try { message = JSON.parse(raw); } catch { return null; }
-    const content = message.serverContent;
-    if (!content) return message;
-    const heard = content.inputTranscription?.text, said = content.outputTranscription?.text;
+  observe(session, e) {
     const push = (role, text) => {
       if (!text) return;
       const last = session.transcript.at(-1);
@@ -321,12 +326,11 @@ export class Voice {
       if (last && last.role === role && !last.done) last.text = (last.text + text).slice(0, 2000);
       else session.transcript.push({ role, text: text.slice(0, 2000) });
     };
-    push('user', heard); push('tutor', said);
-    if (content.turnComplete) {
+    push('user', e.heard); push('tutor', e.said);
+    if (e.done) {
       session.turns++;
       for (const line of session.transcript) line.done = true;
     }
-    return message;
   }
   record(session) {
     const seconds = Math.round((Date.now() - session.started) / 1000);
@@ -342,9 +346,9 @@ export class Voice {
     }
     // Conversation help is help: it is recorded even when nothing was transcribed.
     r.support_events.push({ kind: 'voice_session', level: r.support_level, at: now(),
-      detail: { session_id: session.id, model: this.cfg.geminiLiveModel, seconds, turns: session.turns, stage: session.mode === 'write' ? session.stage : session.mode,
+      detail: { session_id: session.id, model: session.model, seconds, turns: session.turns, stage: session.mode === 'write' ? session.stage : session.mode,
         ...(session.index === null ? {} : { index: session.index }), window_start: session.window_start,
-        usage: { ...session.tokens, usd: session.usd }, transcript } });
+        usage: { ...session.tokens, usd: session.priced ? session.usd : null }, transcript } });
     // Studying is counted on the chunk itself, so later attempts can say whether it happened. The
     // learner may already have moved on to writing it before this close arrived.
     const learned = session.mode === 'learn' ? r.phrases?.inputs?.[session.index]?.learn : null;

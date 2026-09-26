@@ -81,7 +81,7 @@ export class Preparations {
     }
     check(!this.pending, '正在整理这段想法，请等待本次结果。', 429);
     check(textConfigured(this.cfg), textKeyMissing(this.cfg), 503);
-    s.preparation = { id: body.request_id, ...packet, status: 'pending', started_at: now() }; this.commit(s);
+    s.preparation = { id: body.request_id, ...packet, status: 'pending', provider: this.cfg.textProvider, started_at: now() }; this.commit(s);
     this.pending = this.run(body.request_id, packet).finally(() => { this.pending = null; });
     return this.board.get();
   }

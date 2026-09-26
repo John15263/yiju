@@ -1,9 +1,11 @@
 import { voiceMode } from './voice-mode.js';
 import { openQuiz } from './view.js';
+import { openVoice, microphoneDenied } from './backend.js';
 // Live voice tutor: the page carries the learner's microphone, never the API key.
-// The local server owns the prompt and records what was said.
+// The engine (the local server, or the extension's side panel) owns the prompt and records what was said.
 const OUTPUT_RATE = 24000;
-// The cost shown is what Google reports each turn used, priced on the server; nothing here guesses it.
+// The cost shown is what the service reports each turn used, priced by the engine; nothing here guesses it.
+// A service whose price is not known is shown as such, never as $0.
 
 function toBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -53,7 +55,7 @@ export function createVoiceUI({ getState, render, error, draftOf, quiet = () => 
     setInterval(() => { channel.postMessage({ type: 'here', id: pageID }); prune(); paint(); }, 5000);
     addEventListener('pagehide', () => channel.postMessage({ type: 'bye', id: pageID }));
   } catch {}
-  let socket = null, capture = null, stream = null, playback = null, playHead = 0, sources = new Set();
+  let call = null, capture = null, stream = null, playback = null, playHead = 0, sources = new Set();
   let status = '', live = false, startedAt = 0, ticker = null, lines = [], settings = null, sentDraft = '', usd = 0;
   // A start that is still opening the microphone is abandoned the moment a stop or a newer start comes.
   let sessionKey = '', scopeKey = '', sessionMode = '', generation = 0;
@@ -131,7 +133,7 @@ export function createVoiceUI({ getState, render, error, draftOf, quiet = () => 
     const seconds = Math.round((Date.now() - startedAt) / 1000);
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
   }
-  const money = value => !value ? '$0' : value < 0.001 ? '< $0.001' : `$${value.toFixed(3)}`;
+  const money = value => value === null ? '费用见服务商控制台' : !value ? '$0' : value < 0.001 ? '< $0.001' : `$${value.toFixed(3)}`;
   function note(role, text) {
     const last = lines.at(-1);
     if (last && last.role === role && !last.done) last.text += text;
@@ -144,16 +146,19 @@ export function createVoiceUI({ getState, render, error, draftOf, quiet = () => 
     : `已切到：短语 ${(r.phrases?.index ?? 0) + 1} / ${r.phrases?.items?.length ?? '?'}`;
   // The microphone and speakers of one start. They become the session's only while that start is still
   // the current one; otherwise they are closed on the spot, so an abandoned start never leaves the mic on.
-  async function openAudio() {
+  // A call that carries audio itself ('track', WebRTC in the extension) only needs the microphone; one that
+  // relays it as PCM ('pcm') also needs the capture worklet and a player.
+  async function openAudio(transport) {
     const audio = { stream: await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } }) };
+    if (transport === 'track') return audio;
     try {
       audio.capture = new AudioContext({ sampleRate: 16000 });
       audio.playback = new AudioContext({ sampleRate: OUTPUT_RATE });
-      await audio.capture.audioWorklet.addModule('/voice-worklet.js');
+      await audio.capture.audioWorklet.addModule(new URL('./voice-worklet.js', import.meta.url).href);
       const source = audio.capture.createMediaStreamSource(audio.stream);
       const worklet = new AudioWorkletNode(audio.capture, 'voice-capture', { processorOptions: { target: 16000, chunk: 1600 } });
       worklet.port.onmessage = event => {
-        if (capture === audio.capture && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'audio', data: toBase64(event.data) }));
+        if (capture === audio.capture && call?.ready()) call.send({ type: 'audio', data: toBase64(event.data) });
       };
       source.connect(worklet);
       // Safari starts audio contexts suspended; the opening click is the gesture that resumes them.
@@ -195,65 +200,66 @@ export function createVoiceUI({ getState, render, error, draftOf, quiet = () => 
     if (live || !mode) return;
     // A hint being read aloud must not talk over the tutor.
     globalThis.speechSynthesis?.cancel(); quiet();
-    if (!settings?.voice_configured) { status = '语音陪练需要配置 GEMINI_API_KEY。'; paint(); return; }
+    if (!settings?.voice_configured) {
+      status = settings?.voice_provider === 'none' ? '设置里选了「不用语音」。' : `语音陪练需要先在「设置」里填 ${settings?.voice_name || '语音服务'} 的 key。`;
+      paint(); return;
+    }
     const run = ++generation;
     live = true; lines = []; sentDraft = ''; usd = 0; startedAt = Date.now(); sessionID = '';
     sessionKey = `${r.id}:${r.window_start}`; scopeKey = mode.key; sessionMode = mode.mode;
     sessionHeading = sessionLabel(mode.mode === 'write' ? r.stage : mode.mode, mode.correction?.index ?? (r.stage === 'phrases' ? r.phrases.index : null));
     status = ''; paint();
+    // Each call answers only for itself: an old one still closing must never end the call that replaced it.
+    const params = { round_id: r.id, window_start: String(r.window_start), page: pageID, ...(auto ? { auto: '1' } : {}) };
+    const mine = openVoice(params, {
+      message(message) {
+        if (call !== mine) return;
+        if (message.voice === 'ready') { status = ''; startedAt = Date.now(); sessionID = message.session || 'ready'; paint(); return; }
+        if (message.voice === 'error') { status = message.message; paint(); return; }
+        if (message.voice === 'usage') { usd = message.usd; paint(); return; }
+        if (message.voice === 'closed') { status = message.reason; stop(false); return; }
+        if (message.voice === 'audio') play(message.data);
+        else if (message.voice === 'interrupted') silence();
+        else if (message.voice === 'heard') note('user', message.text);
+        else if (message.voice === 'said') note('tutor', message.text);
+        else if (message.voice === 'turn') for (const line of lines) line.done = true;
+      },
+      error() { if (call === mine) status = '语音连接出错，已结束。'; },
+      close() { if (call === mine && live) { status = status || '语音已结束。'; stop(false); } },
+    });
+    call = mine;
     let audio;
-    try { audio = await openAudio(); }
+    try { audio = await openAudio(mine.transport); }
     catch (e) {
       if (run !== generation) return;
-      live = false;
-      status = e.name === 'NotAllowedError' ? '没有取得麦克风权限。浏览器地址栏里允许麦克风后再试。'
+      status = e.name === 'NotAllowedError' ? microphoneDenied()
         : e.name === 'AudioBlocked' ? '浏览器这次没有允许自动播放声音，按 ⌘ ] 开始讲解。' : '打不开麦克风，这次没有开始。';
-      paint(); return;
+      stop(); return;
     }
     // Stopped, or replaced by a newer start, while the microphone was opening.
     if (run !== generation) { free(audio); return; }
     ({ stream, capture, playback } = audio); playHead = 0;
-    // Each socket answers only for itself: an old one still closing must never end the call that replaced it.
-    const ws = new WebSocket(`ws://${location.host}/api/sentence/voice?round_id=${encodeURIComponent(r.id)}&window_start=${r.window_start}&page=${encodeURIComponent(pageID)}${auto ? '&auto=1' : ''}`);
-    socket = ws;
-    ws.onmessage = event => {
-      if (socket !== ws) return;
-      let message;
-      try { message = JSON.parse(event.data); } catch { return; }
-      if (message.voice === 'ready') { status = ''; startedAt = Date.now(); sessionID = message.session || 'ready'; paint(); return; }
-      if (message.voice === 'error') { status = message.message; paint(); return; }
-      if (message.voice === 'usage') { usd = message.usd; paint(); return; }
-      if (message.voice === 'closed') { status = message.reason; stop(false); return; }
-      const content = message.serverContent;
-      if (!content) return;
-      if (content.interrupted) silence();
-      for (const part of content.modelTurn?.parts || []) if (part.inlineData?.data) play(part.inlineData.data);
-      if (content.inputTranscription?.text) note('user', content.inputTranscription.text);
-      if (content.outputTranscription?.text) note('tutor', content.outputTranscription.text);
-      if (content.turnComplete) for (const line of lines) line.done = true;
-    };
-    ws.onerror = () => { if (socket === ws) status = '语音连接出错，已结束。'; };
-    ws.onclose = () => { if (socket === ws && live) { status = status || '语音已结束。'; stop(false); } };
+    if (mine.transport === 'track') mine.useMicrophone(stream);
     ticker = setInterval(() => { if (live) { paint(); sendDraft(); } }, 1000);
   }
   function sendDraft() {
     const value = draftOf();
-    if (value === sentDraft || socket?.readyState !== WebSocket.OPEN) return;
+    if (value === sentDraft || !call?.ready()) return;
     sentDraft = value;
-    socket.send(JSON.stringify({ type: 'draft', data: value }));
+    call.send({ type: 'draft', data: value });
   }
   function stop(closeSocket = true) {
     generation++;
-    if (!live && !socket) return;
+    if (!live && !call) return;
     // Time and cost only for a call that actually got through.
-    if (live && sessionID) status = `${status || '语音已结束。'} 用时 ${elapsed()} · 实际花费 ${money(usd)}`;
+    if (live && sessionID) status = `${status || '语音已结束。'} 用时 ${elapsed()} · ${usd === null ? money(usd) : `实际花费 ${money(usd)}`}`;
     live = false;
     // What was just said stays on screen until the recorded copy of it arrives.
     if (sessionID && lines.some(line => line.role !== 'moved')) ended = { id: sessionID, round: getState()?.active?.id, heading: sessionHeading, lines };
     lines = []; sessionID = '';
     clearInterval(ticker); ticker = null;
-    const ws = socket; socket = null;
-    if (ws && closeSocket) { try { ws.close(); } catch {} }
+    const ending = call; call = null;
+    if (ending && closeSocket) ending.close();
     release();
     paint();
     render(getState());
@@ -292,7 +298,7 @@ export function createVoiceUI({ getState, render, error, draftOf, quiet = () => 
         } else if (mode.key !== scopeKey) {
           // Same sentence, next chunk: keep talking, but tell the tutor where we are now.
           scopeKey = mode.key; sentDraft = null;
-          if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'scope' }));
+          if (call?.ready()) call.send({ type: 'scope' });
           lines.push({ role: 'moved', text: scopeLabel(r), done: true });
         }
       }

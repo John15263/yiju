@@ -11,6 +11,8 @@ import { createQuizUI } from './quiz.js';
 import { createExplainUI } from './explain.js';
 import { voiceMode, chunkComparison, loose } from './voice-mode.js';
 import { deskView, markup, openQuiz, supportSummary, SUPPORT_LEVELS } from './view.js';
+import { request, subscribe, speak } from './backend.js';
+import { createSettings } from './settings.js';
 const $ = id => document.getElementById(id);
 let state = null, busy = false, reviewBusy = false, settings = null, writingKey = null, drawer = null;
 // The moment that starts a call by itself (a chunk to study, a correction to explain) at the last render;
@@ -20,10 +22,11 @@ const panels = { chapter: '这段表达', completion: '上一句', voice: '语�
 const footButtons = ['phrase-write', 'start-phrases', 'practice', 'complete', 'gemini-review', 'resume', 'repeat', 'finish-new', 'phrase-retry', 'start-cloze', 'voice-open'];
 const show = (id, visible) => { $(id).hidden = !visible; };
 const put = (id, value) => { $(id).textContent = value; };
-async function api(path, body) {
-  const res = await fetch('/api/sentence' + path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const result = await res.json(); if (!res.ok) throw new Error(result.error || '本机连接失败'); return result;
-}
+const api = (path, body) => request('/api/sentence' + path, body);
+// Who wrote a piece of feedback, by the service that was set when it was asked for.
+const WRITERS = { gemini: 'Gemini', deepseek: 'DeepSeek', qwen: '千问' };
+// Hints and explanations are read by Gemini's speech model or by the browser's own voices, as set in settings.
+const readByBrowser = () => settings?.speech_provider === 'browser';
 function error(e) { put('error', e.message); show('error', true); }
 // The learner's own sentence, marked against the returned suggestion. Nothing here is invented.
 function renderMarkup(id, text, suggestion, language) {
@@ -88,8 +91,8 @@ function render(next) {
   if (!next || (state && next.revision < state.revision)) return;
   const oldRound = state?.active?.id, oldStage = state?.active?.stage, oldCompletion = state?.completion?.round_id;
   state = next; const r = state.active;
-  put('gemini-setting', !settings ? '正在读取 Gemini 配置…' : settings.gemini_configured ? `Gemini 整句审查已启用 · ${settings.gemini_model}` : 'Gemini 整句审查未启用。在 .env 填写 GEMINI_API_KEY，重启服务后即可使用。');
-  put('cloze-review-note', !settings ? '正在读取整句审查设置…' : settings.gemini_configured ? '保存后由 Gemini 自动检查整句，反馈直接显示在这里。' : '整句审查尚未启用。仍可保存，再到 Codex 说“写完了”获得反馈。');
+  put('gemini-setting', !settings ? '正在读取服务设置…' : settings.gemini_configured ? `文字：${settings.text_name} · ${settings.gemini_model}；语音陪练：${settings.voice_configured ? settings.voice_name : settings.voice_provider === 'none' ? '不用' : '还没配好'}；朗读：${readByBrowser() ? '浏览器自带' : 'Gemini'}` : '还没有配好文字服务：点下面的「服务与 key」选服务商、填 key。');
+  put('cloze-review-note', !settings ? '正在读取整句审查设置…' : settings.gemini_configured ? `保存后由 ${settings.text_name} 自动检查整句，反馈直接显示在这里。` : '整句审查尚未启用：先在「服务与 key」里配好文字服务。仍可保存。');
   const composing = composeUI.update(state, settings);
   const freewriting = freewriteUI.isOpen();
   clozeUI.update(composing || freewriting ? null : r);
@@ -230,7 +233,7 @@ function render(next) {
       changes: feedback?.changes || [], language: r.language });
     put('answer-label', marked?.changes ? `这次的表达 · ${marked.summary}` : '这次的表达');
     show('feedback-label', responding && !!feedback);
-    put('feedback-label', feedback?.provider === 'gemini' ? 'Gemini 的反馈' : feedback ? 'Codex 的反馈' : '');
+    put('feedback-label', feedback ? `${WRITERS[feedback.provider] || 'Codex'} 的反馈` : '');
     put('feedback-text', responding ? feedback?.message || '' : '');
     show('feedback-open', responding && !!feedback);
     const scored = responding && Number.isInteger(feedback?.score);
@@ -284,7 +287,7 @@ function render(next) {
 }
 const clozeUI = createClozeUI({ getState: () => state, api, render, error, command });
 // Hints are also read aloud, except while the tutor is talking.
-const speech = createSpeech({ enabled: () => $('hint-speech').checked, busy: () => voiceUI.isOpen() || explainUI.busy(), engine: () => $('speech-engine').value,
+const speech = createSpeech({ enabled: () => $('hint-speech').checked, busy: () => voiceUI.isOpen() || explainUI.busy(), engine: () => readByBrowser() ? 'system' : 'gemini', fetcher: speak,
   report: result => put('hint-speech-status', result.ok ? `最近一次：已出声（${result.voice}）` : `最近一次：没出声，${result.reason}`) });
 // Starting to write ends the learning conversation first, so it never runs on into writing.
 const phrasesUI = createPhrasesUI({ getState: () => state, api, render, error, storageNote, renderMarkup, beforeWrite: () => voiceUI.stop(), speak: speech.say });
@@ -293,7 +296,7 @@ const freewriteUI = createFreewriteUI({ api, onChange: () => render(state), onUs
 const writingHelpUI = createWritingHelpUI({ api, render, speak: speech.say });
 const quizUI = createQuizUI({ api, render, getState: () => state, error });
 // A hint read aloud never talks over an explanation, and an explanation starting ends one.
-const explainUI = createExplainUI({ api, auto: () => $('voice-auto').checked, before: () => speech.stop() });
+const explainUI = createExplainUI({ api, auto: () => $('voice-auto').checked, before: () => speech.stop(), engine: () => readByBrowser() ? 'browser' : 'gemini', fetcher: speak });
 const voiceUI = createVoiceUI({ getState: () => state, render, error, quiet: () => { speech.stop(); explainUI.stop(); },
   // Nothing is being written while a chunk is studied or feedback is read, so the tutor is not told about a draft box.
   draftOf: () => {
@@ -308,9 +311,6 @@ for (const [id, key] of [['writing-help-auto', 'auto-hint'], ['voice-auto', 'aut
 }
 $('hint-speech').addEventListener('change', () => { if (!$('hint-speech').checked) speech.stop(); });
 $('hint-speech-test').onclick = () => { put('hint-speech-status', '正在试听…'); speech.test(state?.active?.language); };
-// Gemini reads hints unless this browser chose the system voice.
-try { $('speech-engine').value = localStorage.getItem('speech-engine') === 'system' ? 'system' : 'gemini'; } catch {}
-$('speech-engine').addEventListener('change', () => { speech.stop(); try { localStorage.setItem('speech-engine', $('speech-engine').value); } catch {} });
 $('start-freewrite').onclick = () => freewriteUI.start();
 $('repeat').onclick = () => command('repeat');
 $('writing-text').oninput = () => {
@@ -346,7 +346,7 @@ function ankiLine(a) {
   return `牌组「${a.deck}」· 已推送 ${a.sent} 张${a.pending ? ` · 待推送 ${a.pending} 张` : ''}${a.failed ? ` · ${a.failed} 张推送失败` : ''}${a.last_error ? `。${a.last_error}` : ''}`;
 }
 async function showAnki(flush = false) {
-  try { const res = await fetch('/api/anki' + (flush ? '/flush' : ''), flush ? { method: 'POST' } : {}); if (!res.ok) throw new Error(); put('anki-status', ankiLine(await res.json())); }
+  try { put('anki-status', ankiLine(await request('/api/anki' + (flush ? '/flush' : ''), flush ? {} : undefined))); }
   catch { put('anki-status', '暂时读不到 Anki 推送的情况。'); }
 }
 $('anki-flush').onclick = () => { put('anki-status', '正在推送…'); void showAnki(true); };
@@ -354,11 +354,10 @@ $('anki-flush').onclick = () => { put('anki-status', '正在推送…'); void sh
 const dollars = v => v >= 1 ? `$${v.toFixed(2)}` : v >= 0.01 ? `$${v.toFixed(3)}` : v > 0 ? `$${v.toFixed(4)}` : '$0';
 async function showUsage() {
   try {
-    const res = await fetch('/api/usage'); if (!res.ok) throw new Error();
-    const u = await res.json();
+    const u = await request('/api/usage');
     put('usage-totals', u.since
       ? `今天 ${dollars(u.today.usd)}（${u.today.calls} 次调用）· 近 7 天 ${dollars(u.week.usd)} · 累计 ${dollars(u.all.usd)} · 从 ${new Date(u.since).toLocaleDateString()} 开始记录`
-      : '还没有记录到调用。之后每次调用 Gemini 都会记在这里。');
+      : '还没有记录到调用。之后每次调用模型都会记在这里。');
     $('usage-breakdown').replaceChildren(...u.week_by_purpose.map(p => {
       const li = document.createElement('li'), name = document.createElement('span'), cost = document.createElement('span');
       name.textContent = p.label || p.purpose;
@@ -403,18 +402,28 @@ $('gemini-review').onclick = async () => {
   catch (e) { error(e); }
   finally { reviewBusy = false; render(state); }
 };
-fetch('/api/config').then(async res => { if (!res.ok) throw new Error('无法读取审查设置，请刷新页面。'); return res.json(); })
-  .then(value => { settings = value; voiceUI.configure(value); render(state); }).catch(error);
+// Which services are set; with no text service yet, the settings open by themselves the first time.
+const settingsUI = createSettings({ onSaved: () => void loadConfig() });
+let askedForKeys = false;
+async function loadConfig() {
+  try {
+    settings = await request('/api/config');
+    voiceUI.configure(settings);
+    put('speech-engine-note', readByBrowser() ? '（用浏览器自带的声音）' : '（用 Gemini 朗读）');
+    render(state);
+    if (!settings.gemini_configured && !askedForKeys) { askedForKeys = true; void settingsUI.open(); }
+  } catch (e) { error(new Error(`无法读取服务设置：${e.message}`)); }
+}
+$('settings-open').onclick = () => void settingsUI.open();
+void loadConfig();
 const connection = (text, trouble) => { put('connection', text); show('connection', trouble); };
-const events = new EventSource('/api/sentence/events');
 // The first build this page hears is its own; a different one after a reconnect means the server was
 // restarted with new code, and this page (its hints, its voice) is out of date until it is reloaded.
 let build = null;
-events.addEventListener('build', event => {
-  let value; try { value = JSON.parse(event.data); } catch { return; }
-  if (build === null) build = value; else if (value !== build) $('update-note').hidden = false;
-});
 $('update-note').onclick = () => location.reload();
-events.addEventListener('state', event => { try { render(JSON.parse(event.data)); connection('已连接 · 本地保存', false); } catch (e) { error(e); } });
-events.onopen = () => connection('已连接 · 本地保存', false);
-events.onerror = () => connection('连接中断 · 正在重连', true);
+subscribe({
+  state: value => { try { render(value); connection('已连接 · 本地保存', false); } catch (e) { error(e); } },
+  build: value => { if (build === null) build = value; else if (value !== build) $('update-note').hidden = false; },
+  up: () => connection('已连接 · 本地保存', false),
+  down: () => connection('连接中断 · 正在重连', true),
+});

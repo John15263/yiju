@@ -85,7 +85,7 @@ export class SentenceBoard {
         fields(p, ['preparation_id'], ['preparation_id']);
         const draft = s.preparation;
         check(draft?.id === p.preparation_id && draft.status === 'ready', '材料已改变，请重新查看预览。', 409);
-        const provenance = { provider: 'gemini', model: draft.model, preparation_id: draft.id,
+        const provenance = { provider: draft.provider || 'gemini', model: draft.model, preparation_id: draft.id,
           source: draft.source, focus: draft.focus, confirmed_at: now() };
         if (draft.units) {
           const outline = validateOutline(draft.outline), collectionID = crypto.randomUUID();

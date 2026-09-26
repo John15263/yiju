@@ -97,7 +97,7 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
     $('phrase-work').hidden = !ready;
     $('phrase-retry').hidden = ready || p?.status === 'pending' || working === 'ensure';
     $('phrase-retry').disabled = !!working || busy;
-    $('phrase-status').textContent = ready ? '' : p?.status === 'error' ? p.message : p?.status === 'pending' || working === 'ensure' ? 'Gemini 正在按意思拆解这一句…' : '正在准备短语材料…';
+    $('phrase-status').textContent = ready ? '' : p?.status === 'error' ? p.message : p?.status === 'pending' || working === 'ensure' ? '正在按意思拆解这一句…' : '正在准备短语材料…';
     if (!p && requested !== `${r.id}:${r.window_start}` && !busy && !working) {
       requested = `${r.id}:${r.window_start}`;
       queueMicrotask(() => { if (current && `${current.id}:${current.window_start}` === requested) void send('ensure'); });

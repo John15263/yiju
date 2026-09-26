@@ -20,11 +20,11 @@ export function clozeCard(quiz, r) {
 
 export class Anki {
   constructor(store, cfg, request = fetch) {
-    this.store = store; this.url = cfg.ankiUrl; this.deck = cfg.ankiDeck; this.request = request;
-    // Only the real practice server pushes; tests and previews keep cards in the outbox, away from the learner's Anki.
-    this.live = cfg.ankiPush === true;
+    this.store = store; this.cfg = cfg; this.url = cfg.ankiUrl; this.deck = cfg.ankiDeck; this.request = request;
     this.flushing = null; this.lastError = ''; this.lastPushed = null;
   }
+  // Only a runner that turned pushing on pushes; tests and previews keep cards in the outbox, away from the learner's Anki.
+  get live() { return this.cfg.ankiPush === true; }
   // Retried in the background, so a card made while Anki was closed goes over once it is opened.
   start(every = 5 * 60 * 1000) { this.timer = setInterval(() => { void this.flush(); }, every); this.timer.unref?.(); void this.flush(); }
   enqueue(card) {

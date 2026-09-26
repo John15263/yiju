@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>一句 · 摆球器</title>
-  <link rel="stylesheet" href="/sentence.css"><script type="module" src="/sentence.js"></script>
+  <link rel="stylesheet" href="sentence.css"><script type="module" src="sentence.js"></script>
 </head>
 <body>
   <header>
-    <a href="/" class="brand"><span class="ball" aria-hidden="true"></span>一句</a>
+    <a href="" class="brand"><span class="ball" aria-hidden="true"></span>一句</a>
     <button id="unit-badge" hidden aria-haspopup="dialog"><span id="language"></span><span id="unit-position"></span><span class="caret" aria-hidden="true">▾</span></button>
     <span id="demo" hidden>示例</span>
     <span id="connection" role="status" hidden></span>
@@ -52,7 +52,7 @@
         </details>
         <p id="preview-details" class="footnote"></p>
         <div class="actions"><button id="accept-preparation" class="primary">确认并开始</button></div>
-        <p class="footnote">有偏差就修改上面的内容或重点，再点“重新整理”。每次最多 20,000 字符；整理时原文和补充重点会发送给 Gemini，已有练习会保留。</p>
+        <p class="footnote">有偏差就修改上面的内容或重点，再点“重新整理”。每次最多 20,000 字符；整理时原文和补充重点会发送给你在「服务与 key」里选的文字服务，已有练习会保留。</p>
       </section>
     </section>
 
@@ -112,7 +112,7 @@
 
           <section id="study-region" aria-label="这一句的示范" hidden>
             <div class="prompt" id="study-prompt"><p id="study-label" class="label">一种自然的表达 · AI 参考</p><div id="study-text"></div></div>
-            <details id="explanation-panel"><summary>理解这句话</summary><p id="explanation"></p><p class="footnote">还有不懂的地方，直接在 Codex 里问。</p></details>
+            <details id="explanation-panel"><summary>理解这句话</summary><p id="explanation"></p><p class="footnote">还有不懂的地方，逐块学习时按 ⌘ ] 问语音陪练。</p></details>
           </section>
 
           <section id="response" aria-label="这次表达" hidden>
@@ -154,7 +154,7 @@
           <button id="start-phrases" hidden>先练短语</button>
           <button id="practice" hidden>继续修改</button>
           <button id="complete" hidden>完成本句</button>
-          <button id="gemini-review" hidden>请 Gemini 点评</button>
+          <button id="gemini-review" hidden>请求点评</button>
           <button id="resume" hidden>继续练习</button>
           <button id="repeat" hidden>清空重练一轮</button>
           <button id="finish-new" hidden>新的想法</button>
@@ -208,25 +208,25 @@
 
       <section id="panel-records" hidden>
         <label for="history">选择一句</label><select id="history"><option value="">还没有练习记录</option></select>
-        <div class="actions"><button id="new-sentence">新的想法</button><a href="/legacy" class="quiet-link">打开原来的主题练习 ↗</a></div>
+        <div class="actions"><button id="new-sentence">新的想法</button><button id="settings-open" class="quiet">服务与 key</button><!-- local-only --><a href="/legacy" class="quiet-link">打开原来的主题练习 ↗</a><!-- /local-only --></div>
         <p class="footnote"><label><input id="voice-auto" type="checkbox" checked> 进入每一块、看到批改时，自动念讲解（有问题再按 ⌘ ] 开实时语音）</label></p>
         <p class="footnote"><label><input id="writing-help-auto" type="checkbox" checked> 写的时候一停顿，就自动给一句提示（短语默写和整句试写）</label></p>
         <p class="footnote"><label><input id="hint-speech" type="checkbox" checked> 提示出来时，念出来</label>
-          <label for="speech-engine">用</label> <select id="speech-engine"><option value="gemini">Gemini 朗读（自然，每条约 $0.0015）</option><option value="system">Mac 系统语音（不花钱）</option></select>
+          <span id="speech-engine-note"></span>
           <button id="hint-speech-test" class="quiet">试听</button><br><span id="hint-speech-status">还没有朗读过。</span></p>
         <p id="stage-label" class="footnote"></p>
-        <p id="gemini-setting" class="footnote">正在读取 Gemini 配置…</p>
+        <p id="gemini-setting" class="footnote">正在读取服务设置…</p>
         <section id="anki-panel" aria-label="Anki">
           <p class="label">Anki</p>
           <p id="anki-status" class="footnote">正在读取…</p>
           <button id="anki-flush" class="quiet">现在推送</button>
         </section>
-        <section id="usage-panel" aria-label="Gemini 花费">
-          <p class="label">Gemini 花费</p>
+        <section id="usage-panel" aria-label="模型花费">
+          <p class="label">模型花费</p>
           <p id="usage-totals" class="footnote">正在读取…</p>
           <p class="footnote">近 7 天，按用途：</p>
           <ul id="usage-breakdown"></ul>
-          <p class="footnote">按 Google 每次返回的实际用量和官方价格计算，含思考 token，没有扣除缓存折扣。账单以 AI Studio 为准。</p>
+          <p class="footnote">按服务商每次返回的实际用量和官方价格计算，含思考 token，没有扣除缓存折扣；这里不知道价格的服务只记用量、不估金额。账单以服务商的控制台为准。</p>
         </section>
         <p class="footnote">网页保存材料、实际表达与反馈。试写时按 ⌘ ] 可以随时叫语音陪练。</p>
       </section>
@@ -234,5 +234,70 @@
 
     <p id="error" role="alert" hidden></p>
   </main>
+
+  <dialog id="settings">
+    <form id="settings-form">
+      <h2>服务与 key</h2>
+      <p class="muted">key 只存在这台电脑上<!-- local-only -->（<code>studio/data/settings.json</code>）<!-- /local-only --><!-- edge: （浏览器的插件存储） -->，保存后只显示末尾四位；只会发给对应的服务商。<!-- local-only -->这里的设置优先于 <code>.env</code>。<!-- /local-only --></p>
+
+      <h3>文字 <span class="muted">整理材料、检查、提示、点评、讲解稿</span></h3>
+      <div class="choice">
+        <label><input type="radio" name="TEXT_PROVIDER" value="gemini"> Gemini</label>
+        <label><input type="radio" name="TEXT_PROVIDER" value="deepseek"> DeepSeek</label>
+        <label><input type="radio" name="TEXT_PROVIDER" value="qwen"> 阿里云百炼（千问）</label>
+      </div>
+
+      <h3>语音陪练</h3>
+      <div class="choice">
+        <label><input type="radio" name="VOICE_PROVIDER" value="gemini"> Gemini Live</label>
+        <label><input type="radio" name="VOICE_PROVIDER" value="qwen"> 阿里云百炼（国内可用）</label>
+        <label><input type="radio" name="VOICE_PROVIDER" value="none"> 不用语音</label>
+      </div>
+
+      <h3>朗读 <span class="muted">提示和讲解稿</span></h3>
+      <div class="choice">
+        <label><input type="radio" name="SPEECH_PROVIDER" value="gemini"> Gemini 朗读（自然，每条约 $0.0015）</label>
+        <label><input type="radio" name="SPEECH_PROVIDER" value="browser"> 浏览器自带（不花钱）</label>
+      </div>
+
+      <div class="field" data-need="gemini">
+        <label for="GEMINI_API_KEY">Gemini API key</label>
+        <input type="password" id="GEMINI_API_KEY" name="GEMINI_API_KEY" autocomplete="off" spellcheck="false">
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">在哪里拿</a>
+      </div>
+      <div class="field" data-need="deepseek">
+        <label for="DEEPSEEK_API_KEY">DeepSeek API key</label>
+        <input type="password" id="DEEPSEEK_API_KEY" name="DEEPSEEK_API_KEY" autocomplete="off" spellcheck="false">
+        <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">在哪里拿</a>
+      </div>
+      <div class="field" data-need="qwen">
+        <label for="DASHSCOPE_API_KEY">百炼 API key</label>
+        <input type="password" id="DASHSCOPE_API_KEY" name="DASHSCOPE_API_KEY" autocomplete="off" spellcheck="false">
+        <a id="dashscope-link" href="https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key" target="_blank" rel="noreferrer">在哪里拿</a>
+      </div>
+      <div class="field" data-need="qwen">
+        <label for="DASHSCOPE_REGION">百炼区域</label>
+        <select id="DASHSCOPE_REGION" name="DASHSCOPE_REGION"><option value="cn-beijing">中国大陆（北京）</option><option value="ap-southeast-1">国际（新加坡）</option></select>
+        <span class="muted">key 是哪个区域建的就选哪个</span>
+      </div>
+      <div class="field" data-need="qwen">
+        <label for="DASHSCOPE_WORKSPACE_ID">业务空间 ID</label>
+        <input type="text" id="DASHSCOPE_WORKSPACE_ID" name="DASHSCOPE_WORKSPACE_ID" autocomplete="off" spellcheck="false" placeholder="在百炼控制台右上角">
+        <span class="muted"><!-- local-only -->本机版可以不填；<!-- /local-only -->用百炼语音时要填：插件里的语音要连业务空间的专属地址。</span>
+      </div>
+
+      <h3>Anki</h3>
+      <div class="choice">
+        <label><input type="checkbox" id="ANKI_PUSH"> 把改错小测做成卡片，推送到 Anki</label>
+      </div>
+      <p id="anki-note" class="muted" hidden><span id="ankiconnect-origin"></span></p>
+
+      <p id="settings-result" class="settings-result" role="status"></p>
+      <div class="bar">
+        <button type="submit" class="primary" id="settings-save">保存并测试</button>
+        <button type="button" class="quiet" id="settings-close">关闭</button>
+      </div>
+    </form>
+  </dialog>
 </body>
 </html>

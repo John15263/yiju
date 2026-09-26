@@ -1,19 +1,21 @@
 import { voiceMode } from './voice-mode.js';
+import { browserVoice } from './speech.js';
 
 // The explanation of a chunk before it is written, of a chunk's correction, and of the sentence's
-// feedback: a script written once on the server, shown here line by line and read aloud by Gemini TTS.
+// feedback: a script written once by the engine, shown here line by line and read aloud — by Gemini's speech
+// model, or, with the browser's own voices chosen in settings, by the best Chinese voice this browser has.
 // Arriving at such a moment starts it; the line being read is marked, a line can be clicked to hear it
 // again. Questions go to the live tutor, opened by hand, which is given the script.
 const RATE = 24000;
 const MODES = ['learn', 'fix', 'review'];
 const TITLES = { learn: '讲解 · 这一块', fix: '讲解 · 这次批改', review: '讲解 · 这次点评' };
 
-export function createExplainUI({ api, auto, before = () => {}, fetcher = (...args) => globalThis.fetch(...args) }) {
+export function createExplainUI({ api, auto, before = () => {}, engine = () => 'gemini', fetcher = (...args) => globalThis.fetch(...args) }) {
   const $ = id => document.getElementById(id);
   let moment = null, lastKey, lines = [], status = '', loading = false;
   // Playing: one run at a time; audio per line is kept for the moment, so replaying costs nothing.
   let context = null, run = 0, playing = false, paused = false, current = -1, poll = null, playHead = 0;
-  let audio = [], starts = [];
+  let audio = [], starts = [], voiced = false;
   const sources = new Set();
 
   function paint() {
@@ -39,6 +41,7 @@ export function createExplainUI({ api, auto, before = () => {}, fetcher = (...ar
 
   function halt() {
     run++;
+    if (voiced) { voiced = false; globalThis.speechSynthesis?.cancel(); }
     for (const source of sources) { try { source.stop(); } catch {} }
     sources.clear(); clearInterval(poll); poll = null;
     playing = false; paused = false; current = -1;
@@ -86,12 +89,36 @@ export function createExplainUI({ api, auto, before = () => {}, fetcher = (...ar
     sources.add(source); source.onended = () => sources.delete(source);
   }
 
+  // The browser's own voice: one line after another, each marked while it is said.
+  async function sayLines(from, mine) {
+    const synth = globalThis.speechSynthesis;
+    if (!synth) { playing = false; status = '这个浏览器不支持朗读，文字都在上面。'; paint(); return; }
+    voiced = true;
+    for (let i = from; i < lines.length; i++) {
+      if (mine !== run) return;
+      current = i; paint();
+      const said = await new Promise(resolve => {
+        const utterance = new SpeechSynthesisUtterance(lines[i]);
+        utterance.lang = 'zh-CN'; utterance.rate = 1;
+        const voice = browserVoice('zh-CN', synth);
+        if (voice) utterance.voice = voice;
+        utterance.onend = () => resolve(true);
+        utterance.onerror = event => resolve(['interrupted', 'canceled'].includes(event.error) ? null : false);
+        synth.speak(utterance);
+      });
+      if (said === false) { status = '浏览器没有念出来，文字都在上面。'; break; }
+    }
+    if (mine !== run) return;
+    voiced = false; playing = false; current = -1; paint();
+  }
+
   async function play(from = 0) {
     if (!lines.length) return;
     halt();
     const mine = run;
     before();
     playing = true; current = from; paint();
+    if (engine() === 'browser') return sayLines(from, mine);
     try {
       context ||= new AudioContext({ sampleRate: RATE });
       if (context.state !== 'running') await Promise.race([context.resume().catch(() => {}), new Promise(r => setTimeout(r, 1000))]);
@@ -144,8 +171,9 @@ export function createExplainUI({ api, auto, before = () => {}, fetcher = (...ar
   $('explain-toggle').onclick = () => {
     if (!lines.length) return void load(true);
     if (!playing) return void play(0);
-    if (paused) { paused = false; context.resume().catch(() => {}); }
-    else { paused = true; context.suspend().catch(() => {}); }
+    const synth = voiced ? globalThis.speechSynthesis : null;
+    if (paused) { paused = false; if (synth) synth.resume(); else context.resume().catch(() => {}); }
+    else { paused = true; if (synth) synth.pause(); else context.suspend().catch(() => {}); }
     paint();
   };
   $('explain-replay').onclick = () => void play(0);

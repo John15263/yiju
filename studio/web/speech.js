@@ -1,4 +1,4 @@
-// Hints read aloud. By default Gemini's speech model says them (through the local server, which holds
+// Hints read aloud. With Gemini chosen for speech, its speech model says them (through the engine, which holds
 // the key), streamed so the voice starts about a second after the hint. The browser's own speech is the
 // other choice and the fallback: the Mac's system voices, and in Microsoft Edge its "Natural" neural
 // voices, which are free but read the text through Microsoft's service.
@@ -20,6 +20,15 @@ const rank = voice => (NATURAL.test(voice.name) ? 10 : 0) - (!voice.localService
   + (/premium|高品质|高音质/i.test(voice.name) ? 6 : /enhanced|增强/i.test(voice.name) ? 5 : 0)
   + (STANDARD.test(voice.name) ? 3 : 0) + (voice.default ? 1 : 0) - (voice.name.includes('(') && !/enhanced|premium|natural/i.test(voice.name) ? 2 : 0)
   - (NOVELTY.test(voice.name) ? 6 : 0);
+
+// The best voice this browser has for a language, or null.
+export function browserVoice(lang, synth = globalThis.speechSynthesis) {
+  if (!synth) return null;
+  const want = lang.toLowerCase(), base = want.split('-')[0];
+  const voices = synth.getVoices().filter(v => v.lang.replace('_', '-').toLowerCase().startsWith(base));
+  const exact = voices.filter(v => v.lang.replace('_', '-').toLowerCase() === want);
+  return (exact.length ? exact : voices).sort((a, b) => rank(b) - rank(a))[0] || null;
+}
 
 // Chrome can drop speech silently: an utterance collected before it starts, a queue left paused, a speak
 // sent in the same instant as a cancel. Each of those is guarded here, and what happened to the last one
@@ -121,16 +130,10 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
     item.done = true;
     settle(item);
   }
-  function voiceFor(lang) {
-    const want = lang.toLowerCase(), base = want.split('-')[0];
-    const voices = synth.getVoices().filter(v => v.lang.replace('_', '-').toLowerCase().startsWith(base));
-    const exact = voices.filter(v => v.lang.replace('_', '-').toLowerCase() === want);
-    return (exact.length ? exact : voices).sort((a, b) => rank(b) - rank(a))[0] || null;
-  }
   function utter(text, target, retried = false, why = '') {
     const utterance = new SpeechSynthesisUtterance(spoken(text));
     utterance.lang = langOf(text, target);
-    const voice = voiceFor(utterance.lang);
+    const voice = browserVoice(utterance.lang, synth);
     if (voice) utterance.voice = voice;
     // A learner listening in the language being learned gets it a touch slower.
     utterance.rate = utterance.lang === 'zh-CN' ? 1 : 0.92;

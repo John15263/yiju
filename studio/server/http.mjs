@@ -19,11 +19,29 @@ import { Anki } from './anki.mjs';
 import { Speech } from './tts.mjs';
 import { Explanations } from './explain.mjs';
 import { accept } from './ws.mjs';
+import { config } from './config.mjs';
+import { Settings, testServices } from './settings.mjs';
+import { textConfigured, textModel, textName } from './llm.mjs';
+import { voiceProvider, voiceConfigured } from './voice-providers.mjs';
 
-export function createServer({ store, pack, cfg, webRoot, token = randomBytes(32).toString('hex'), infer, clozeInfer, reviewInfer, preparationInfer, writingHelpInfer, phrasePreparationInfer, phraseInfer }) {
+// What the page is told about the services, without any key. The gemini_* names are kept from when every text
+// call was Gemini's; they now describe whichever text service is set.
+export function appConfig(cfg) {
+  const voice = voiceProvider(cfg);
+  return { jev_configured: Boolean(cfg.key), model: cfg.model,
+    text_provider: cfg.textProvider, text_name: textName(cfg), gemini_configured: textConfigured(cfg), gemini_model: textModel(cfg),
+    voice_provider: cfg.voiceProvider, voice_name: voice.name, voice_configured: voiceConfigured(cfg), voice_model: voice.model(cfg),
+    speech_provider: cfg.speechProvider, speech_configured: cfg.speechProvider === 'browser' || Boolean(cfg.geminiKey),
+    speech_model: cfg.speechProvider === 'browser' ? '' : cfg.geminiTtsModel, speech_voice: cfg.speechProvider === 'browser' ? '' : cfg.geminiTtsVoice,
+    anki: cfg.ankiPush, voice_max_seconds: cfg.voiceMaxSeconds, native_voice: 'NOT_RUN', transcript_subscription: false };
+}
+
+export function createServer({ store, pack, cfg, settings = new Settings(), env = process.env, connect, webRoot, token = randomBytes(32).toString('hex'), infer, clozeInfer, reviewInfer, preparationInfer, writingHelpInfer, phrasePreparationInfer, phraseInfer }) {
   const streams = new Map();
-  // Every Gemini call below meters itself through cfg.usage.
-  const usage = new Usage(store), anki = new Anki(store, cfg); cfg = { ...cfg, usage, anki };
+  // Every model call below meters itself through cfg.usage. Every part shares this one cfg, so a change made on
+  // the settings page reaches all of them at once.
+  const usage = new Usage(store); cfg = { ...cfg, usage };
+  const anki = new Anki(store, cfg); cfg.anki = anki;
   const runtime = new Runtime(store, pack, (session, state) => {
     for (const res of streams.get(session) || []) res.write(`event: state\ndata: ${JSON.stringify(state)}\n\n`);
   });
@@ -33,6 +51,8 @@ export function createServer({ store, pack, cfg, webRoot, token = randomBytes(32
   });
   const files = new Map([
     ['/phrases.js', ['phrases.js', 'text/javascript; charset=utf-8']],
+    ['/backend.js', ['backend.js', 'text/javascript; charset=utf-8']],
+    ['/settings.js', ['settings.js', 'text/javascript; charset=utf-8']],
     ['/writing-help.js', ['writing-help.js', 'text/javascript; charset=utf-8']],
     ['/freewrite.js', ['freewrite.js', 'text/javascript; charset=utf-8']],
     ['/freewrite-state.mjs', ['freewrite-state.mjs', 'text/javascript; charset=utf-8']],
@@ -59,7 +79,7 @@ export function createServer({ store, pack, cfg, webRoot, token = randomBytes(32
   const freewrites = new Freewrites(store);
   const writingHelp = new WritingHelp(sentence, cfg, writingHelpInfer);
   const phrases = new Phrases(sentence, cfg, phrasePreparationInfer, phraseInfer);
-  const voice = new Voice(sentence, cfg);
+  const voice = new Voice(sentence, cfg, connect);
   const quizzes = new Quizzes(sentence, cfg, phrases);
   const speech = new Speech(cfg);
   const explanations = new Explanations(sentence, cfg);
@@ -101,7 +121,7 @@ export function createServer({ store, pack, cfg, webRoot, token = randomBytes(32
       if (path === '/api/sentence' && req.method === 'GET') return json(res, sentence.get());
       if (path === '/api/sentence/commands' && req.method === 'POST') {
         const command = await body(req), state = sentence.command(command);
-        if (['cloze_submit', 'attempt'].includes(command.type) && !state.duplicate && cfg.geminiKey) {
+        if (['cloze_submit', 'attempt'].includes(command.type) && !state.duplicate && textConfigured(cfg)) {
           reviews.start({ round_id: state.active.id, attempt_id: state.active.attempts.at(-1).id });
           return json(res, sentence.get());
         }
@@ -133,7 +153,18 @@ export function createServer({ store, pack, cfg, webRoot, token = randomBytes(32
         res.on('close', () => { clearInterval(heartbeat); streams.get('sentence-board')?.delete(res); });
         return;
       }
-      if (req.method === 'GET' && path === '/api/config') return json(res, { jev_configured: Boolean(cfg.key), model: cfg.model, gemini_configured: Boolean(cfg.geminiKey), gemini_model: cfg.geminiModel, voice_configured: Boolean(cfg.geminiKey), voice_model: cfg.geminiLiveModel, speech_model: cfg.geminiTtsModel, speech_voice: cfg.geminiTtsVoice, voice_max_seconds: cfg.voiceMaxSeconds, native_voice: 'NOT_RUN', transcript_subscription: false });
+      if (req.method === 'GET' && path === '/api/config') return json(res, appConfig(cfg));
+      if (req.method === 'GET' && path === '/api/settings') return json(res, settings.view(cfg));
+      if (req.method === 'POST' && path === '/api/settings') {
+        const values = settings.patch(await body(req));
+        let next;
+        try { next = config(settings.env(env, values)); } catch (e) { throw new HttpError(400, `设置不对：${e.message}`); }
+        settings.save(values);
+        Object.assign(cfg, next);
+        if (cfg.ankiPush && !anki.timer) anki.start();
+        return json(res, settings.view(cfg));
+      }
+      if (req.method === 'POST' && path === '/api/settings/test') return json(res, await testServices(cfg, { connect }));
       if (req.method === 'POST' && path === '/api/sentence/explain') return json(res, await explanations.request(await body(req)));
       if (req.method === 'POST' && path === '/api/sentence/speak') return await speech.stream(await body(req), req, res);
       if (req.method === 'GET' && path === '/api/usage') return json(res, usage.summary());
