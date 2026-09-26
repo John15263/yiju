@@ -1,0 +1,242 @@
+/* 一句 · 写作台：单列、固定落点、一个主操作、一个抽屉。 */
+:root{font-family:Inter,"Helvetica Neue","PingFang SC","Hiragino Sans",sans-serif;color:#283b34;background:#fdfdfb;font-synthesis:none;--muted:#6e7d74;--line:#e2e7e0;--accent:#315e48;--soft:#f2f5ef;--ink:#253f33}
+*{box-sizing:border-box}body{margin:0;overflow-anchor:none;background:#fdfdfb}
+button,select{font:inherit;color:inherit}a{color:inherit}
+button{border:1px solid #cfd9cf;background:transparent;border-radius:999px;padding:11px 19px;min-height:44px;cursor:pointer;font-size:14px;transition:background .15s ease,border-color .15s ease}
+button:hover{background:#eef2ea}button:disabled{opacity:.4;cursor:default}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}button.primary:hover{background:#27503d}
+button.quiet{border-color:transparent;color:var(--muted);padding:11px 12px}button.quiet:hover{background:var(--soft);color:var(--ink)}
+button:focus-visible,a:focus-visible,summary:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid #6b956d;outline-offset:3px}
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+[hidden]{display:none!important}
+
+/* 顶部：产品名、句序入口、更多。连接正常时不占位。 */
+header{display:flex;align-items:center;gap:14px;margin:0 auto;padding:0 36px;width:min(760px,100%);height:74px;font-size:13px}
+#update-note{margin-left:auto;min-height:0;padding:7px 14px;font-size:13px;background:#fff5e2;border-color:#e1cda4;color:#805b24}
+#update-note:not([hidden])+#more-menu{margin-left:0}
+.brand{display:flex;gap:10px;align-items:center;text-decoration:none;font-size:19px;letter-spacing:.1em}
+.ball{width:11px;height:11px;border-radius:50%;background:#71976b}
+#unit-badge{min-height:0;padding:7px 13px;font-size:13px;color:var(--muted);border-color:var(--line)}
+#unit-badge .caret{margin-left:7px;font-size:10px}
+#demo{font-size:11px;color:#846d43}
+#connection{margin-left:auto;font-size:11px;color:#a04630}
+#more-menu{margin-left:auto;min-height:0;padding:6px 14px;border-color:transparent;color:var(--muted);font-size:17px;line-height:1}
+#connection:not([hidden])+#more-menu{margin-left:14px}
+main{width:min(760px,100%);margin:auto;padding:0 36px 64px}
+.stage{display:flex;flex-direction:column;justify-content:flex-start;padding:30px 0 20px}
+.eyebrow,.label{color:var(--muted);font-size:13px;font-weight:400;letter-spacing:.04em;margin:0 0 14px}
+h1{font-weight:450;font-size:clamp(20px,2.6vw,25px);line-height:1.65;letter-spacing:-.01em;margin:0 0 22px;overflow-wrap:anywhere}
+.footnote{font-size:13px;color:var(--muted);line-height:1.85}
+.direction{font-size:14px;line-height:1.9;margin:18px 0 0;color:var(--accent)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+textarea{width:100%;resize:vertical;min-height:70px;border:1px solid #d4ddcd;border-radius:10px;background:#fff;color:var(--ink);font:inherit;font-size:16px;line-height:1.8;padding:14px;margin:8px 0 15px;outline:none;transition:border-color .15s ease,box-shadow .15s ease}
+textarea:focus{border-color:var(--accent);box-shadow:0 0 0 2px #cfdcc7}textarea:disabled{opacity:.7}
+select{display:block;width:100%;padding:12px;margin:9px 0 18px;border:1px solid var(--line);border-radius:8px;background:#fff;font-size:14px}
+#error{background:#f9e7df;color:#873d2b;padding:16px;border-radius:8px;font-size:13px;line-height:1.7;margin:20px 0}
+summary{cursor:pointer;font-size:13px;color:var(--muted);padding:14px 0}
+
+/* 输入想法 */
+#compose{padding-top:24px}
+#compose h1{margin-bottom:20px}
+#source-text{font-size:17px;min-height:190px}
+#source-count{margin:-10px 0 12px;text-align:right}
+.compose-options{display:flex;gap:15px;align-items:center;margin-bottom:6px}
+.compose-options select{width:150px;margin:0}
+.compose-secondary{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:26px 0 0;padding-top:18px;border-top:1px solid var(--line)}
+.compose-secondary .footnote{flex:1;min-width:220px}
+#prepare-error{color:#873d2b;font-size:14px;line-height:1.8}
+#prepare-preview{border-top:1px solid var(--line);margin-top:26px;padding:26px 0 10px}
+#prepare-preview h2{font-size:21px;font-weight:450;line-height:1.75;margin:0 0 20px}
+#preview-reference{font-size:22px;line-height:1.7;overflow-wrap:anywhere}
+#prepare-preview .actions{margin-top:20px}
+#preview-detail-panel{border-top:1px solid var(--line);margin-top:6px}
+
+/* 确认页与篇章抽屉共用的结构呈现 */
+.expression-outline{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:16px 0 22px}
+.outline-part{padding:15px;background:var(--soft);border-radius:8px}
+.outline-part .label{margin:0 0 9px!important;color:var(--accent)}
+.outline-part p,.outline-part li{font-size:14px;line-height:1.85;margin:0}
+.outline-part ul{margin:0;padding-left:18px}
+.outline-uncertain{grid-column:1/-1;border-left:3px solid #b99451;padding:12px 16px;background:#fbf5e9;font-size:14px;line-height:1.85;border-radius:0 8px 8px 0;margin:0 0 22px}
+.outline-uncertain p{margin:4px 0}.outline-uncertain .label{color:#8a6a24;margin:0 0 6px}
+.preview-unit{padding:16px 0;border-bottom:1px solid var(--line)}
+.preview-unit p{margin:7px 0}
+.preview-unit .unit-meaning-main{font-size:17px;line-height:1.8}
+.preview-unit .unit-meaning,.preview-unit .unit-connection,.source-quote{font-size:13px;line-height:1.85;color:var(--muted);white-space:pre-wrap}
+.preview-unit .unit-reference{font-size:21px;line-height:1.7}
+.preview-unit summary{padding:8px 0;font-size:12px}
+
+/* 写作台：上下文 → 输入 → 辅助 → 弱操作，位置固定。 */
+#board{padding-top:10px}
+#completion-hint{display:flex;align-items:center;gap:12px;width:100%;justify-content:flex-start;min-height:0;padding:10px 16px;margin:0 0 26px;border-color:var(--line);background:var(--soft);color:var(--accent);font-size:13px}
+#completion-hint .caret{margin-left:auto;color:var(--muted)}
+#desk-context{min-height:96px}
+#desk-context h1,#desk-context h2{font-weight:450;font-size:clamp(18px,2.1vw,20px);line-height:1.75;margin:0 0 22px;overflow-wrap:anywhere}
+#context-open{min-height:0;padding:6px 0;margin:-14px 0 20px;font-size:13px;text-decoration:underline;text-underline-offset:4px}
+#phrase-region,#writing-region,#study-region,#response{border-top:1px solid var(--line);padding-top:22px}
+#phrase-text,#writing-text{font-size:23px;line-height:1.65;min-height:112px;margin:0 0 16px;padding:16px 16px 18px}
+#phrase-text{min-height:96px}
+.desk-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.desk-helper{min-height:26px;margin:18px 0 0}
+.desk-helper p{margin:0 0 8px;font-size:15px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere}
+.desk-helper p:empty{display:none}
+.order-gap{color:#b6c3b4;margin:0 .45em;font-weight:300}
+#phrase-marking{font-size:19px;line-height:1.9;margin:0 0 10px;overflow-wrap:anywhere}
+#phrase-feedback{color:var(--accent)}
+#phrase-feedback[data-status=adjust]{color:#8a5a22}
+#chunk-note{margin:16px 0 0;padding:11px 15px;border-radius:9px;background:var(--soft);color:var(--accent);font-size:15px;line-height:1.85}
+#chunk-note p{margin:0}
+/* 改错小测：空格就在句子里。 */
+#quiz-region{padding:4px 0 8px}
+#quiz-meaning{font-size:15px;margin:0 0 8px}
+#quiz-line{font-size:20px;line-height:2.5;overflow-wrap:anywhere;white-space:pre-wrap}
+.quiz-blank{display:inline-flex;align-items:baseline;gap:6px;margin:0 2px}
+.quiz-blank input{font:inherit;font-size:19px;padding:4px 8px;border:0;border-bottom:2px solid #9aaa95;border-radius:5px 5px 0 0;background:#f0f3ec;color:var(--ink);outline:none;max-width:100%}
+.quiz-blank input:focus{background:#e8efe1;border-color:var(--accent)}
+.quiz-blank.right input{border-color:#39794c;background:#edf5e8;color:#2f6b45}
+.quiz-blank.wrong input{border-color:#b66b55;background:#fbf1ec}
+.quiz-answer{color:#2f6b45;font-size:17px;font-weight:500}
+#quiz-notes{list-style:none;margin:6px 0 10px;padding:0;font-size:14px;line-height:1.8;color:#8a5a22}
+/* 批改：你写的、改成、逐条改动，分行对照。 */
+.correction .c-line{margin:0 0 10px}
+.correction .c-label{display:block;font-size:12px;color:var(--muted);letter-spacing:.04em;margin-bottom:2px}
+.correction .c-text{margin:0;font-size:18px;line-height:1.75;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.correction mark{border-radius:4px;padding:1px 3px}
+.correction mark.c-cut{background:#fbe9e5;color:#a5462f;text-decoration:line-through;text-decoration-color:#c8705a}
+.correction mark.c-add{background:#e5f1e7;color:#2f6b45}
+.correction .c-rows{list-style:none;margin:4px 0 0;padding:0;font-size:15px;line-height:1.8}
+.correction .c-rows li{padding:6px 0;border-top:1px dashed var(--line)}
+.correction .c-from{color:#a5462f;text-decoration:line-through;text-decoration-color:#c8705a}
+.correction .c-to{color:#2f6b45;font-weight:500}
+.correction .c-why{display:block;color:var(--muted);font-size:13px}
+.chunk-note-label{font-size:12px;color:var(--muted);letter-spacing:.04em}
+#chunk-note-marking,#chunk-note-reference{color:var(--ink);font-size:17px;overflow-wrap:anywhere}
+#chunk-note-reference-row{margin-top:8px}
+#chunk-note-text{margin-top:8px!important}
+#chunk-note-text:empty{display:none}
+#chunk-note[data-status=adjust]{background:#fbf5e9;color:#805b24}
+#phrase-hint-text,#writing-help-words{color:var(--ink)}
+/* Hints arrive while writing and are read at a glance, so they sit closer to the text's own size. */
+#phrase-hint-text,#writing-help-meaning{font-size:18px;line-height:1.75}
+#writing-help-words{font-size:19px;line-height:1.7}
+#writing-help-result{animation:rise .16s ease-out}
+#clue-row{display:flex;align-items:center;gap:10px;margin:14px 0 0}
+#clue-row button{min-height:0;padding:7px 12px;font-size:13px;border-color:var(--line)}
+.prompt{margin:14px 0 0;padding:14px 0 0;border-top:1px dashed var(--line)}
+.prompt .label{margin-bottom:10px}
+#prompt-text,#study-text{font-size:21px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere}
+#prompt-text.empty{font-size:15px;color:var(--muted)}
+#prompt-text .chunk{display:inline-block;padding:4px 12px;margin:0 9px 9px 0;background:#eaf0e4;border-radius:5px;font-size:19px}
+#study-prompt,#learn-prompt{border-top:0;padding-top:0;margin-top:0}
+.learn-meaning{margin:6px 0 0;font-size:15px;color:var(--muted);line-height:1.7}
+.learn-reference{margin:0;font-size:20px;line-height:1.7;overflow-wrap:anywhere}
+#explanation{font-size:15px;line-height:1.9;white-space:pre-wrap}
+#attempt-text{font-size:21px;line-height:1.85;margin:0 0 14px;overflow-wrap:anywhere}
+#attempt-text del,#completion-answer del,#phrase-marking del,#chunk-note-marking del{text-decoration:line-through;text-decoration-thickness:1.5px;color:#a5462f;text-decoration-color:#c8705a}
+#attempt-text ins,#completion-answer ins,#phrase-marking ins,#chunk-note-marking ins{text-decoration:underline;text-decoration-thickness:1.5px;text-underline-offset:4px;text-decoration-color:#7da88a;color:#2f6b45}
+#attempt-text .after-mark,#completion-answer .after-mark,#phrase-marking .after-mark,#chunk-note-marking .after-mark{margin-left:.32em}
+#markup-note{margin:0 0 20px}
+#feedback-text{font-size:16px;line-height:1.9;white-space:pre-wrap;margin:0 0 14px}
+#feedback-open{min-height:0;padding:7px 0;font-size:13px;text-decoration:underline;text-underline-offset:4px}
+.storage-note{margin:18px 0 0;padding:12px 15px;border-radius:8px;background:#f9e7df;color:#873d2b;font-size:13px;line-height:1.8}
+#desk-foot{margin:28px 0 0;padding-top:20px;border-top:1px solid var(--line);gap:10px}
+#desk-foot button{font-size:13px}
+#desk-foot #pause{margin-left:auto}
+#support-note{margin:16px 0 0}
+@keyframes rise{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
+
+/* 单抽屉：同一时刻只有一个，收起后回到原输入位置。
+   打开时停靠在右侧，正文在剩下的宽度里居中——浏览器放大后也不会被盖住。 */
+:root{--drawer:clamp(300px,34vw,430px)}
+body{transition:padding .16s ease-out}
+body.has-drawer{padding-right:var(--drawer)}
+#drawer{position:fixed;right:0;top:0;bottom:0;width:var(--drawer);background:#fff;border-left:1px solid var(--line);box-shadow:-10px 0 30px #283b340d;padding:22px 26px 40px;overflow:auto;z-index:5;animation:slide .16s ease-out}
+@keyframes slide{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+.drawer-head{display:flex;align-items:center;gap:16px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+#drawer-title{margin:0;font-size:14px;color:var(--ink)}
+#drawer-close{margin-left:auto;min-height:0;padding:8px 14px;font-size:13px}
+#drawer p{line-height:1.85}
+#drawer .label{margin:16px 0 8px}
+#drawer .actions{margin:16px 0}
+.unit-navigation{display:flex;gap:8px;align-items:center;margin:0 0 14px}
+.unit-navigation button{white-space:nowrap;font-size:13px;padding:9px 12px;min-height:0}
+.unit-navigation select{min-width:0;margin:0;font-size:13px;padding:10px}
+#collection-summary{font-size:15px;line-height:1.9;white-space:pre-wrap}
+#collection-reference{font-size:19px;line-height:1.8;white-space:pre-wrap}
+#completion-answer,#completion-feedback,#completion-suggestion,#suggestion{font-size:15px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere}
+#feedback-score{font-size:20px;color:var(--accent);margin:0 0 14px;font-variant-numeric:tabular-nums}
+#voice-now{padding:0 0 12px;margin:0 0 6px;border-bottom:1px solid var(--line)}
+#voice-part{margin:0 0 6px;font-size:13px;letter-spacing:.04em;color:var(--muted)}
+#voice-live,#voice-idle{display:flex;align-items:center;gap:10px;margin:0;font-size:15px;color:var(--accent)}
+#voice-idle{color:var(--muted)}
+#voice-idle #voice-begin{margin-left:auto;min-height:0;padding:7px 14px;font-size:13px}
+#voice-now #voice-status{margin:8px 0 0}
+#voice-now #voice-elsewhere{margin:8px 0 0;color:#805b24}
+#voice-earlier,#voice-about{margin:14px 0 0;border-top:1px solid var(--line);padding-top:10px}
+#voice-transcript[hidden]+#voice-earlier{border-top:0;padding-top:0}
+#voice-earlier summary,#voice-about summary{cursor:pointer;color:var(--muted);font-size:13px}
+#voice-earlier-list{max-height:40vh;overflow:auto;margin-top:10px;opacity:.8}
+#voice-earlier-list p{margin:0 0 10px;font-size:14px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere}
+#voice-earlier-list .voice-tutor{color:var(--accent);padding-left:12px;border-left:2px solid #cfdcc7}
+#voice-earlier-list .voice-session{color:var(--muted);font-size:12px;margin:14px 0 6px}
+#voice-earlier-list .voice-session:first-child{margin-top:0}
+#voice-live #voice-stop{margin-left:auto;min-height:0;padding:7px 14px;font-size:13px}
+#voice-timer{font-variant-numeric:tabular-nums}
+#voice-cost{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}
+#usage-breakdown{list-style:none;margin:6px 0 10px;padding:0;font-size:13px;line-height:1.9}
+#usage-breakdown li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px dashed var(--line)}
+#usage-breakdown span:last-child{font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+.voice-dot{width:9px;height:9px;border-radius:50%;background:#c0533a;animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+#voice-transcript{max-height:46vh;overflow:auto;margin:10px 0}
+#voice-transcript p{margin:0 0 12px;font-size:15px;line-height:1.85;white-space:pre-wrap;overflow-wrap:anywhere}
+#voice-transcript .voice-user{color:var(--ink)}
+#voice-transcript .voice-tutor{color:var(--accent);padding-left:12px;border-left:2px solid #cfdcc7}
+#voice-transcript .voice-moved{color:var(--muted);font-size:13px;border-top:1px dashed var(--line);padding-top:10px}
+#voice-transcript .voice-session{color:var(--muted);font-size:12px;letter-spacing:.04em;margin:18px 0 8px;padding-top:10px;border-top:1px solid var(--line)}
+#voice-transcript .voice-session:first-child{margin-top:0;padding-top:0;border-top:0}
+#voice-open{font-variant-numeric:tabular-nums}
+#panel-records label{font-size:13px;color:var(--muted)}
+#hint-speech-test{min-height:0;padding:3px 10px;font-size:12px;margin-left:6px}
+.quiet-link{font-size:13px;color:var(--muted)}
+.attempt{border-top:1px solid var(--line);padding:14px 0}
+.attempt p{white-space:pre-wrap;line-height:1.8;overflow-wrap:anywhere;font-size:15px}
+.attempt small{color:var(--muted);font-size:12px}
+#drawer .expression-outline{grid-template-columns:1fr;gap:10px}
+
+@media(max-width:700px){
+  header{padding:0 22px;height:64px;gap:10px}
+  main{padding:0 22px 48px}
+  #desk-context{min-height:0}
+  #phrase-text,#writing-text{font-size:20px;min-height:104px}
+  #desk-foot{gap:8px}
+  #desk-foot #pause{margin-left:0}
+  .expression-outline{grid-template-columns:1fr}
+  /* 太窄放不下两栏时改成底部面板：只占半屏，正文底部留出同样的空白，被挡住的部分可以滚上来。 */
+  body.has-drawer{padding-right:0;padding-bottom:50vh}
+  #drawer{left:0;right:0;top:auto;width:auto;max-height:50vh;border-left:0;border-top:1px solid var(--line);border-radius:14px 14px 0 0;box-shadow:0 -10px 30px #283b3414;padding:18px 22px 32px;animation:sheet .16s ease-out}
+  @keyframes sheet{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  .drawer-head{position:sticky;top:-18px;background:#fff;padding-top:4px}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* 自由写作（不变） */
+#restore-source{align-self:flex-start;font-size:12px;padding:7px 12px;margin-bottom:12px}.is-freewriting>header,.is-freewriting>footer{display:none}#freewrite{padding:30px 0;min-height:100svh}.freewrite-top{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.freewrite-top .eyebrow{margin:0}#freewrite-clock{font-size:30px;font-weight:500;font-variant-numeric:tabular-nums;margin-left:auto}#freewrite-idle{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}#freewrite-progress{display:block;width:100%;height:4px;margin:18px 0 25px;accent-color:var(--accent)}#freewrite-message{color:var(--accent);font-size:15px;line-height:1.8;min-height:28px}#freewrite-text{font-size:20px;line-height:1.9;min-height:48svh;resize:vertical;transition:opacity .2s,border-color .2s;background:transparent}#freewrite-count{text-align:right;margin:0 0 20px}.is-warning #freewrite-idle,.is-warning #freewrite-message{color:#a04630}.is-warning #freewrite-text{border-color:#b66b55;background:#fcf8f3}.is-warning #freewrite-progress{accent-color:#b66b55}@media(max-width:600px){#freewrite{padding:20px 0}.freewrite-top{gap:12px}#freewrite-clock{font-size:25px}#freewrite-text{font-size:18px}}
+
+/* 逐空填空（保留，默认不入口） */
+.stage.is-cloze{padding-top:30px}.is-cloze .meta{margin-bottom:20px}.is-cloze h1{font-size:26px;margin-bottom:20px}.cloze-top{display:flex;align-items:center;justify-content:space-between;gap:15px}.cloze-top .label{margin:0}#cloze-region{border-top:1px solid var(--line);padding-top:20px}#cloze-line{font-size:23px;line-height:3.2;white-space:pre-wrap;padding:12px 0 24px;overflow-wrap:anywhere}.cloze-blank{display:inline-flex;position:relative;vertical-align:baseline;white-space:normal;margin:0 3px;max-width:100%}.cloze-blank input{font:inherit;font-size:21px;background:#f0f3ec;color:inherit;border:0;border-bottom:2px solid #9aaa95;border-radius:5px 5px 0 0;outline:none;padding:8px 7px;width:auto;min-width:5ch;max-width:100%;height:43px}.cloze-blank input:focus{background:#e8efe1;border-color:#315e48}.blank-status{position:absolute;right:5px;bottom:-19px;line-height:1;font-size:11px;color:#85917f}.cloze-blank[data-verdict=accepted] input{border-color:#39794c;background:#edf5e8}.cloze-blank[data-verdict=accepted] .blank-status{color:#39794c}.cloze-blank[data-verdict=spelling] input,.cloze-blank[data-verdict=form] input,.cloze-blank[data-verdict=meaning] input{border-color:#b17c30;background:#faf1de}.cloze-blank.selected input{box-shadow:0 0 0 2px #c8d6bd}.cloze-help{padding:20px;background:#f0f3ec;border-radius:10px;margin:8px 0 22px;min-height:168px}.cloze-help .label{margin-bottom:8px}#cloze-feedback,#cloze-hint-text{font-size:14px;line-height:1.9;margin:8px 0 14px}#cloze-hint-text:empty{display:none}#cloze-feedback[data-verdict=accepted]{color:#39794c}#cloze-feedback[data-verdict=spelling],#cloze-feedback[data-verdict=form],#cloze-feedback[data-verdict=meaning]{color:#926322}.cloze-help button{font-size:12px;padding:8px 13px}.cloze-help .actions{gap:8px}#cloze-submit{font-size:13px}.is-cloze .direction{font-size:12px}.is-cloze #practice{background:transparent;color:var(--accent)}
+@media(max-width:600px){.is-cloze h1{font-size:22px}#cloze-line{font-size:19px}.cloze-blank input{font-size:18px;height:39px}.cloze-help{padding:16px}#cloze-submit{width:100%}}
+.has-cloze header{height:58px}.stage.is-cloze{padding-top:18px}.is-cloze .meta{margin-bottom:12px}.is-cloze .eyebrow{margin-bottom:8px}.is-cloze h1{font-size:20px;line-height:1.55;margin-bottom:16px}#cloze-region{padding-top:12px}#cloze-region>.footnote{font-size:11px;margin:5px 0 10px}#cloze-line{font-size:20px;line-height:2.9;padding:5px 0 17px}.cloze-blank input{font-size:19px;height:37px}.cloze-help{min-height:0;padding:15px 18px;margin-bottom:16px}.is-cloze #support-note{display:none}
+.cloze-last-result{position:sticky;top:8px;z-index:2;background:#edf2e8;border:1px solid #d3ddcb;border-radius:8px;margin:12px 0;padding:11px 14px;font-size:13px;line-height:1.8;white-space:normal;box-shadow:0 3px 12px #283b3408}.cloze-last-result[data-verdict=spelling],.cloze-last-result[data-verdict=form],.cloze-last-result[data-verdict=meaning]{background:#fff5e2;border-color:#e1cda4;color:#805b24}.cloze-last-result[data-verdict=review]{background:#f3f1e8;border-color:#ded9c5;color:#706747}.blank-status{left:3px;right:auto;bottom:-17px;white-space:nowrap;font-size:10px}.cloze-blank[data-verdict=review] .blank-status{color:#81703d}
+
+/* The explanation: a script read aloud line by line; the line being read is marked. */
+#explain-region{margin:18px 0 0;padding:14px 0 0;border-top:1px solid var(--line)}
+.explain-head{display:flex;align-items:center;gap:10px;margin:0 0 8px}
+.explain-head .label{margin:0}
+.explain-head button{min-height:0;padding:6px 12px;font-size:13px}
+.explain-head #explain-toggle{margin-left:auto}
+#explain-lines{margin:0;padding:0 0 0 1.4em;font-size:16px;line-height:1.8;color:var(--ink)}
+#explain-lines li{margin:0 0 6px;padding:2px 8px;border-radius:6px;cursor:pointer;transition:background .2s}
+#explain-lines li:hover{background:var(--soft)}
+#explain-lines li.reading{background:#e7efe2;color:var(--accent)}
+#explain-status:empty{display:none}

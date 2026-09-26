@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>生成台 · Generative Studio</title>
+  <link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header>
+    <a class="wordmark" href="/">生成台</a>
+    <div class="language-tabs" aria-label="练习语言"><button id="lang-en">English</button><button id="lang-ja">日本語</button></div>
+    <span id="phase" class="status">准备开始</span>
+  </header>
+  <main>
+    <div id="workspace" hidden>
+      <section class="prompt-stage" aria-label="动态提示区">
+        <div class="prompt-content">
+          <p id="pack-title" class="topic"></p>
+          <h1 id="opening"></h1>
+          <div class="language-prompt"><p id="support-label" class="small muted"></p><div id="support" aria-live="polite"></div></div>
+          <section id="meaning-card-01" class="meaning-context" aria-label="意义提示">
+            <div class="goal"><p id="goal"></p></div>
+            <div id="meaning"></div>
+            <p id="source-label" class="sr-only"></p>
+          </section>
+          <p id="variant" class="variation" hidden></p>
+          <p id="speaking-state" class="small muted"></p>
+        </div>
+        <nav class="actions" aria-label="练习操作">
+          <button id="resume" class="primary">开始 / 继续</button>
+          <button id="show-cue">给一点提示</button>
+          <button id="less-help">少给提示</button>
+          <button id="park" class="quiet">停在这里</button>
+        </nav>
+      </section>
+      <details class="tools" id="tools-panel">
+        <summary>材料与记录</summary>
+        <div class="tool-content">
+          <section class="settings" aria-label="练习设置">
+            <h2>练习设置</h2>
+            <div class="settings-grid">
+              <label>意义支持<select id="meaning-support"><option value="full">中文全文</option><option value="outline">中文要点</option><option value="scene">场景与目的</option><option value="none">不显示</option></select></label>
+              <label>语言支持<select id="language-support"><option value="reference">完整参考</option><option value="chunks">词块</option><option value="keywords">关键词</option><option value="none">不显示</option></select></label>
+              <label>字号<select id="font-size"><option value="normal">标准</option><option value="large">较大</option><option value="larger">大</option></select></label>
+            </div>
+            <p id="scene" class="muted small"></p>
+            <div class="button-row"><button id="reference">看参考</button><button id="hold">保持条件</button><button id="vary">换一个条件</button></div>
+            <div class="session-row"><label>练习记录<select id="session-list"><option value="">选择或新建</option></select></label><button id="new-session">新的一次</button></div>
+          </section>
+          <details class="sub-panel fast-help">
+            <summary>针对某处求助 <span id="jev-status" class="muted small"></span></summary>
+            <p class="muted small">说说哪里卡住了，从现有词块中找一点帮助。需要新表达或解释时，回到当前 Codex 对话。</p>
+            <label for="help-input">哪里卡住了</label><input id="help-input" placeholder="例如：咖啡因，日语怎么说？" maxlength="2000">
+            <div class="button-row"><button id="jev-help">帮我选提示</button><span class="muted small">这条输入与必要的练习状态会发送至 TypeSafe。</span></div>
+            <p id="decision-result" role="status"></p>
+            <details><summary class="small">判断记录</summary><pre id="decision-trace"></pre></details>
+          </details>
+          <details class="sub-panel product-panel">
+            <summary>保存我的表达 <span id="draft-status" class="small muted">草稿自动保存</span></summary>
+            <p class="muted small">记下实际说出或写下的内容。网页不会自动取得语音转写。</p>
+            <div class="button-row"><button id="begin-attempt">开始一次表达</button><button id="pause-speaking">我说完了</button></div>
+            <label class="sr-only" for="draft">我的表达草稿</label><textarea id="draft" rows="4" placeholder="写下你的表达，或粘贴实际取得的转写。"></textarea>
+            <div class="save-row"><label>内容来源<select id="attempt-source"><option value="typed_original">本人键入</option><option value="voice_transcript">实际语音转写</option><option value="user_confirmed_text">用户确认文本</option><option value="user_revision">用户修订</option><option value="agent_summary">AI 摘要</option><option value="ai_suggestion">AI 建议</option><option value="simulation">模拟回答</option></select></label><label class="checkbox"><input id="confirmed" type="checkbox">我确认这条内容</label><button id="save-attempt" class="primary">保存这次表达</button></div>
+          </details>
+          <details class="sub-panel history"><summary>已保存的表达 <span id="attempt-count" class="muted small">0</span></summary><div id="attempts"></div><a id="export" class="text-link" href="#">导出记录 ↗</a></details>
+          <label class="next-entry-label">下次从哪里接着说<input id="next-entry" placeholder="例如：不看词块，重新说明选择咖啡的原因。"></label>
+          <p id="connection" class="muted small">正在连接本机服务…</p>
+        </div>
+      </details>
+    </div>
+    <div id="notice" role="status" aria-live="polite"></div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,88 @@
+{
+  "pack_id": "coffee-tea-sleep",
+  "pack_version": "1",
+  "title": "咖啡、茶与睡眠",
+  "meaning_source": {
+    "kind": "demo",
+    "original": null,
+    "locator": null,
+    "confirmation": "虚构的示例意思，用来演示练习流程",
+    "text": "我除了喝咖啡，平时也喝很多茶，所以比较注意咖啡因。我一般一天不喝超过两杯咖啡，下午三点以后就不喝了。对我来说，浓一点的咖啡会不会影响睡眠，是选择咖啡时会考虑的因素。",
+    "outline": [
+      "平时也喝很多茶，因此注意咖啡因",
+      "一天不超过两杯咖啡，下午三点以后不喝",
+      "选择咖啡时考虑浓度对睡眠的影响"
+    ]
+  },
+  "scene": "咖啡馆，排队时聊一聊怎样选择咖啡。",
+  "role_brief": {
+    "kind": "fictional_practice_partner",
+    "relationship": "刚认识不久的同事",
+    "register": "自然、礼貌的普通成人口语"
+  },
+  "communicative_goal": "说明喝茶、注意咖啡因与选择咖啡之间的关系。",
+  "forbidden_inferences": [
+    "所有咖啡都会影响睡眠",
+    "用户有某种已确诊的睡眠问题",
+    "用户已经不喝咖啡了",
+    "未经确认加入用户其他经历"
+  ],
+  "tracks": {
+    "en": {
+      "reference": "I also drink a lot of tea, so I try to watch my caffeine. I generally have no more than two cups of coffee a day, and I avoid coffee after 3 p.m. I'm concerned about how much the stronger roasts affect my sleep.",
+      "reference_kind": "ai_teaching_adaptation",
+      "opening": "How do you decide what coffee to order?",
+      "keywords": [
+        "tea",
+        "caffeine",
+        "two cups",
+        "sleep"
+      ],
+      "cues": {
+        "tea": "also drink a lot of tea",
+        "caffeine": "watch my caffeine",
+        "limit": "no more than two cups a day",
+        "late": "avoid coffee after 3 p.m.",
+        "sleep": "affect my sleep"
+      }
+    },
+    "ja": {
+      "reference": "お茶もよく飲むので、カフェインには気をつけています。コーヒーは普段一日二杯までにして、午後三時以降は飲まないようにしています。濃いめのコーヒーだと、睡眠への影響が気になるんです。",
+      "reference_kind": "ai_teaching_adaptation",
+      "opening": "コーヒーは、どうやって選んでいるんですか？",
+      "keywords": [
+        "お茶",
+        "カフェイン",
+        "二杯",
+        "睡眠"
+      ],
+      "cues": {
+        "tea": "お茶もよく飲む",
+        "caffeine": "カフェインに気をつける",
+        "limit": "一日二杯まで",
+        "late": "午後三時以降は飲まない",
+        "sleep": "睡眠への影響が気になる"
+      }
+    }
+  },
+  "variants": {
+    "none": {
+      "label": "原条件",
+      "description": "向刚认识不久的同事说明自己的选择。"
+    },
+    "rephrase": {
+      "label": "换一种说法",
+      "description": "人物、事实不变，用另一种说法说明同一个意思。"
+    },
+    "clarify": {
+      "label": "澄清一个误解",
+      "description": "对方以为你完全不喝咖啡了；澄清这一点。"
+    }
+  },
+  "success_criteria": [
+    "意思清楚，交际目的完成",
+    "允许自然的不同表达，不比对范文逐字评分",
+    "说明实际使用过的支持与尚不确定之处"
+  ],
+  "assets": []
+}

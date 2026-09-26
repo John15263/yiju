@@ -1,0 +1,6 @@
+.env
+.env.*
+!.env.example
+studio/data/
+studio/test-results/
+.DS_Store

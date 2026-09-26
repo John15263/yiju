@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>一句 · 摆球器</title>
+  <link rel="stylesheet" href="/sentence.css"><script type="module" src="/sentence.js"></script>
+</head>
+<body>
+  <header>
+    <a href="/" class="brand"><span class="ball" aria-hidden="true"></span>一句</a>
+    <button id="unit-badge" hidden aria-haspopup="dialog"><span id="language"></span><span id="unit-position"></span><span class="caret" aria-hidden="true">▾</span></button>
+    <span id="demo" hidden>示例</span>
+    <span id="connection" role="status" hidden></span>
+    <button id="update-note" hidden title="本地服务换了新代码，这个页面还是旧的">页面有更新 · 点这里刷新</button>
+    <button id="more-menu" aria-haspopup="dialog" aria-label="更多">⋯</button>
+  </header>
+  <main>
+    <section id="freewrite" aria-label="五分钟自由写作" hidden>
+      <div class="freewrite-top"><span class="eyebrow">先畅所欲言</span><strong id="freewrite-clock">5:00</strong><span id="freewrite-idle">停笔倒计时 8 秒</span></div>
+      <progress id="freewrite-progress" value="0" max="300000" aria-label="五分钟写作进度"></progress>
+      <p id="freewrite-message" role="status">想到什么，就写什么。</p>
+      <label for="freewrite-text" class="label">此刻，我想说的是……</label>
+      <textarea id="freewrite-text" rows="12" maxlength="20000" placeholder="不用写得好，也不用有结构。先从此刻脑子里的想法开始。" spellcheck="false" autocomplete="off"></textarea>
+      <p id="freewrite-count" class="footnote"></p>
+      <div class="actions"><button id="freewrite-use" class="primary" disabled>写满 5 分钟后进入学习</button><button id="freewrite-retry" class="primary" hidden>重新写 5 分钟</button><button id="freewrite-exit">放弃并清空本轮</button></div>
+      <p class="footnote">前 5 分钟停笔 8 秒，本轮文字就会消失。中文输入法选字期间可继续输入；切换页面或刷新不会重置计时。写满后解除限制，再由你决定何时进入学习。</p>
+    </section>
+
+    <section id="compose" class="stage" aria-label="整理新的想法" hidden>
+      <p class="eyebrow">从你的内容出发</p>
+      <h1>今天，想表达什么？</h1>
+      <label for="source-text">你的内容</label>
+      <textarea id="source-text" rows="6" maxlength="20000" placeholder="不用先整理，直接把想表达的内容放在这里。"></textarea>
+      <p id="source-count" class="footnote"></p>
+      <button id="restore-source" hidden>恢复写作前的输入</button>
+      <div class="compose-options"><label for="source-language">这次练习</label><select id="source-language"><option value="en">英语</option><option value="ja">日语</option></select></div>
+      <details id="source-focus-panel"><summary>补充想强调的重点（选填）</summary>
+        <label for="source-focus">想强调什么？也可以在预览后补充或修改（选填）</label>
+        <textarea id="source-focus" rows="2" maxlength="2000" placeholder="例如：我想强调克制是一种力量，而不是胆怯。"></textarea>
+      </details>
+      <div class="actions"><button id="generate-sentence" class="primary">整理我的想法</button><button id="cancel-compose">回到当前练习</button></div>
+      <p id="prepare-status" class="footnote" role="status"></p>
+      <p id="prepare-error" role="alert" hidden></p>
+      <p class="compose-secondary"><button id="start-freewrite" class="quiet">先自由写 5 分钟 ↗</button><span class="footnote">前 5 分钟停笔 8 秒会清空本轮；写满后保留文字进入学习。</span></p>
+      <section id="prepare-preview" aria-label="待确认的表达" hidden>
+        <p class="label">这是你想表达的意思吗</p><h2 id="preview-meaning"></h2>
+        <div id="preview-uncertain" class="outline-uncertain" hidden></div>
+        <div id="preview-units"></div>
+        <details id="preview-detail-panel"><summary>看完整的整理结果（结构与参考译文）</summary>
+          <div id="preview-outline" class="expression-outline"></div>
+          <p class="label">对应的外语表达 · 按逻辑展开</p><div id="preview-reference"></div>
+        </details>
+        <p id="preview-details" class="footnote"></p>
+        <div class="actions"><button id="accept-preparation" class="primary">确认并开始</button></div>
+        <p class="footnote">有偏差就修改上面的内容或重点，再点“重新整理”。每次最多 20,000 字符；整理时原文和补充重点会发送给 Gemini，已有练习会保留。</p>
+      </section>
+    </section>
+
+    <section id="board" class="stage" aria-label="当前一句" hidden>
+      <button id="completion-hint" hidden><span id="completion-label"></span><span class="caret">查看</span></button>
+      <div id="desk">
+        <div id="desk-context">
+          <p class="eyebrow" id="task-label" hidden></p>
+          <h1 id="meaning" hidden></h1>
+          <p class="eyebrow" id="phrase-progress" hidden></p>
+          <h2 id="phrase-meaning" hidden></h2>
+        </div>
+
+        <div id="desk-input">
+          <section id="phrase-region" aria-label="短语试写" hidden>
+            <p id="phrase-status" class="footnote" role="status"></p>
+            <div id="phrase-work" hidden>
+              <label for="phrase-text" class="visually-hidden">用外语写出这一块意思</label>
+              <textarea id="phrase-text" rows="2" maxlength="800" spellcheck="false" placeholder="可以使用自己的措辞。"></textarea>
+              <div class="desk-actions">
+                <button id="phrase-check" class="primary" aria-keyshortcuts="Meta+Enter Control+Enter">检查 · ⌘ ↵</button>
+                <button id="phrase-continue" hidden>参考后继续</button>
+              </div>
+              <div class="desk-helper"><div id="phrase-marking" class="correction" hidden></div><p id="phrase-feedback" role="status"></p><p id="phrase-hint-text" aria-live="polite"></p></div>
+            </div>
+          </section>
+
+          <section id="writing-region" aria-label="整句试写" hidden>
+            <label for="writing-text" class="visually-hidden">你的整句表达</label>
+            <textarea id="writing-text" rows="4" maxlength="4000" placeholder="试着用自己的方式写出这一句。" spellcheck="false"></textarea>
+            <div class="desk-actions">
+              <button id="writing-submit" class="primary" aria-keyshortcuts="Meta+Enter Control+Enter">看看表达 · ⌘ ↵</button>
+            </div>
+            <div class="desk-helper">
+              <p id="writing-help-status" class="footnote" role="status"></p>
+              <div id="writing-help-result" hidden><p id="writing-help-meaning"></p><p id="writing-help-words"></p><p id="writing-help-note" class="footnote"></p></div>
+              <div class="prompt" id="prompt-region" aria-live="polite"><p id="prompt-label" class="label"></p><div id="prompt-text"></div></div>
+            </div>
+          </section>
+
+          <section id="learn-region" aria-label="先学这一块" hidden>
+            <div class="prompt" id="learn-prompt">
+              <p class="label">这一块的表达</p>
+              <p id="learn-reference" class="learn-reference"></p>
+              <p id="learn-hint" class="learn-meaning"></p>
+            </div>
+          </section>
+
+          <section id="quiz-region" aria-label="改错小测" hidden>
+            <p class="eyebrow" id="quiz-title">改错小测</p>
+            <p id="quiz-meaning" class="footnote"></p>
+            <div id="quiz-line"></div>
+            <ul id="quiz-notes"></ul>
+            <div class="desk-actions"><button id="quiz-submit" class="primary" aria-keyshortcuts="Meta+Enter Control+Enter">检查 · ⌘ ↵</button></div>
+            <p id="quiz-status" class="footnote" role="status"></p>
+          </section>
+
+          <section id="study-region" aria-label="这一句的示范" hidden>
+            <div class="prompt" id="study-prompt"><p id="study-label" class="label">一种自然的表达 · AI 参考</p><div id="study-text"></div></div>
+            <details id="explanation-panel"><summary>理解这句话</summary><p id="explanation"></p><p class="footnote">还有不懂的地方，直接在 Codex 里问。</p></details>
+          </section>
+
+          <section id="response" aria-label="这次表达" hidden>
+            <p class="label" id="answer-label">你的表达</p><div id="attempt-text" class="correction"></div>
+            <p class="label" id="feedback-label">反馈</p><p id="feedback-text" aria-live="polite"></p>
+            <button id="feedback-open" class="quiet" hidden>看完整点评</button>
+          </section>
+
+          <section id="cloze-region" aria-label="逐空试写" hidden>
+            <div class="cloze-top"><span class="label">逐空试写</span><span id="cloze-progress" class="footnote"></span></div>
+            <p class="footnote">进入填空自动给意义提示；Command + [ 逐级提示至参考答案。← / → 编辑，⌘ + ← / → 切空，⌘ + Enter 提交。</p>
+            <p id="cloze-last-result" class="cloze-last-result" role="status" hidden></p>
+            <div id="cloze-line"></div>
+            <div class="cloze-help"><p id="cloze-slot-title" class="label"></p><p id="cloze-feedback" role="status"></p><p id="cloze-hint-text" aria-live="polite"></p>
+              <div class="actions"><button id="cloze-check">检查这个空</button><button id="cloze-hint" aria-keyshortcuts="Meta+[" title="Command + [：升级当前空的提示">给一点提示</button><button id="cloze-hide" hidden>收起提示</button></div>
+            </div>
+            <button id="cloze-submit" class="primary" aria-keyshortcuts="Meta+Enter Control+Enter">现在提交 · ⌘ Enter</button>
+            <p id="cloze-review-note" class="footnote">正在读取整句审查设置…</p>
+          </section>
+
+          <div id="chunk-note" hidden>
+            <p class="chunk-note-label" id="chunk-note-label">这一块 · 点评</p><div id="chunk-note-marking" class="correction"></div>
+            <div id="chunk-note-reference-row"><p class="chunk-note-label">参考写法</p><p id="chunk-note-reference"></p></div>
+            <p id="chunk-note-text"></p>
+          </div>
+
+          <section id="explain-region" aria-label="讲解" hidden>
+            <div class="explain-head"><p class="label" id="explain-title">讲解</p>
+              <button id="explain-toggle" class="quiet">听讲解</button><button id="explain-replay" class="quiet" hidden>重听</button></div>
+            <ol id="explain-lines"></ol>
+            <p id="explain-status" class="footnote" role="status"></p>
+          </section>
+        </div>
+
+        <p id="storage-note" class="storage-note" role="alert" hidden></p>
+        <p id="direction" class="direction" role="status"></p>
+        <nav id="desk-foot" class="actions" aria-label="练习操作">
+          <button id="phrase-write" hidden aria-keyshortcuts="Meta+Enter Control+Enter">开始默写 · ⌘ ↵</button>
+          <button id="start-phrases" hidden>先练短语</button>
+          <button id="practice" hidden>继续修改</button>
+          <button id="complete" hidden>完成本句</button>
+          <button id="gemini-review" hidden>请 Gemini 点评</button>
+          <button id="resume" hidden>继续练习</button>
+          <button id="repeat" hidden>清空重练一轮</button>
+          <button id="finish-new" hidden>新的想法</button>
+          <button id="phrase-retry" hidden>重新准备短语</button>
+          <button id="start-cloze" hidden>逐空试写</button>
+          <button id="voice-open" class="quiet" hidden aria-keyshortcuts="Meta+]">语音陪练 · ⌘ ]</button>
+        </nav>
+      </div>
+    </section>
+
+    <div id="drawer" role="dialog" aria-modal="false" aria-labelledby="drawer-title" hidden>
+      <div class="drawer-head"><p id="drawer-title" class="label"></p><button id="drawer-close" aria-label="关闭">收起</button></div>
+
+      <section id="panel-chapter" hidden>
+        <div class="unit-navigation"><button id="unit-prev">上一句</button><select id="unit-select" aria-label="选择本段的一句"></select><button id="unit-next">下一句</button></div>
+        <p id="unit-purpose" class="footnote"></p>
+        <p id="unit-connection" class="footnote"></p>
+        <p id="collection-summary"></p>
+        <div id="collection-outline" class="expression-outline"></div>
+        <details id="collection-reference-panel" hidden><summary>读一遍完整的外语表达</summary><p id="collection-reference"></p></details>
+      </section>
+
+      <section id="panel-completion" hidden>
+        <p id="completion-score" class="footnote"></p>
+        <p class="label">你的表达</p><p id="completion-answer"></p>
+        <p class="label">反馈</p><p id="completion-feedback"></p><p id="completion-suggestion"></p>
+      </section>
+
+      <section id="panel-feedback" hidden>
+        <p id="feedback-score" hidden></p>
+        <div id="suggestion-region" hidden><p class="label">AI 建议</p><p id="suggestion"></p></div>
+        <div id="attempt-history"></div>
+      </section>
+
+      <section id="panel-voice" hidden>
+        <div id="voice-now">
+          <p id="voice-part"></p>
+          <p id="voice-live" hidden><span class="voice-dot" aria-hidden="true"></span><span id="voice-state"></span> · <span id="voice-timer"></span><span id="voice-cost"></span><button id="voice-stop">结束</button></p>
+          <p id="voice-idle" hidden><span id="voice-idle-text"></span><button id="voice-begin" class="quiet">开始 · ⌘ ]</button></p>
+          <p id="voice-status" class="footnote" role="status"></p>
+          <p id="voice-elsewhere" class="footnote" hidden></p>
+        </div>
+        <div id="voice-transcript" aria-live="polite"></div>
+        <details id="voice-earlier" hidden><summary id="voice-earlier-title"></summary><div id="voice-earlier-list"></div></details>
+        <details id="voice-about"><summary>陪练看得到什么、花费怎么算</summary>
+          <p id="voice-hint-fix" class="footnote" hidden>批改的讲解会先在左边念一遍。⌘ ] 打开实时语音提问：陪练看得到<strong>你写的、批改后的写法和刚才的讲解稿</strong>（整句的还有点评和分数），不会从头再讲，你问哪里它讲哪里；它看不到准备好的参考答案。你改完重新检查、或离开这一页，对话就结束。</p>
+          <p id="voice-hint-learn" class="footnote" hidden>这一块的讲解会先在左边念一遍。⌘ ] 打开实时语音提问：陪练<strong>看得到这一块的外语写法和刚才的讲解稿</strong>，不会从头再讲；按 ⌘ ↵ 开始默写时对话自动结束，它不会带着答案跟进试写。<br>整段对话会记进这一块的学习记录和随后整句的帮助记录里。</p>
+          <p id="voice-hint" class="footnote">⌘ ] 开始或结束。陪练知道你要表达的中文意思、这一句在整段里的作用，以及你已经写到哪里；<strong>看不到准备好的参考句</strong>。它讲词汇、搭配和读法，不会替你把整句念出来。<br>整段对话会记进这次尝试的帮助记录里，和提示、参考一样算作帮助。<br>上方显示的花费是 Google 每一轮返回的实际用量按官方价格算出来的（含思考 token），每说完一轮更新一次。Live 每一轮都会把前面的整段对话重新计费，所以问得越多，每一轮越贵；安静开着麦克风几乎不花钱。</p>
+        </details>
+      </section>
+
+      <section id="panel-records" hidden>
+        <label for="history">选择一句</label><select id="history"><option value="">还没有练习记录</option></select>
+        <div class="actions"><button id="new-sentence">新的想法</button><a href="/legacy" class="quiet-link">打开原来的主题练习 ↗</a></div>
+        <p class="footnote"><label><input id="voice-auto" type="checkbox" checked> 进入每一块、看到批改时，自动念讲解（有问题再按 ⌘ ] 开实时语音）</label></p>
+        <p class="footnote"><label><input id="writing-help-auto" type="checkbox" checked> 写的时候一停顿，就自动给一句提示（短语默写和整句试写）</label></p>
+        <p class="footnote"><label><input id="hint-speech" type="checkbox" checked> 提示出来时，念出来</label>
+          <label for="speech-engine">用</label> <select id="speech-engine"><option value="gemini">Gemini 朗读（自然，每条约 $0.0015）</option><option value="system">Mac 系统语音（不花钱）</option></select>
+          <button id="hint-speech-test" class="quiet">试听</button><br><span id="hint-speech-status">还没有朗读过。</span></p>
+        <p id="stage-label" class="footnote"></p>
+        <p id="gemini-setting" class="footnote">正在读取 Gemini 配置…</p>
+        <section id="anki-panel" aria-label="Anki">
+          <p class="label">Anki</p>
+          <p id="anki-status" class="footnote">正在读取…</p>
+          <button id="anki-flush" class="quiet">现在推送</button>
+        </section>
+        <section id="usage-panel" aria-label="Gemini 花费">
+          <p class="label">Gemini 花费</p>
+          <p id="usage-totals" class="footnote">正在读取…</p>
+          <p class="footnote">近 7 天，按用途：</p>
+          <ul id="usage-breakdown"></ul>
+          <p class="footnote">按 Google 每次返回的实际用量和官方价格计算，含思考 token，没有扣除缓存折扣。账单以 AI Studio 为准。</p>
+        </section>
+        <p class="footnote">网页保存材料、实际表达与反馈。试写时按 ⌘ ] 可以随时叫语音陪练。</p>
+      </section>
+    </div>
+
+    <p id="error" role="alert" hidden></p>
+  </main>
+</body>
+</html>
