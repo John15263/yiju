@@ -81,7 +81,7 @@ export class WritingHelp {
           const result = local ? { ...local, model: 'prepared-reference' } : await this.infer(packet, this.cfg);
           fields(result, [...keys, 'model'], [...keys, 'model']); text(result.model, 100);
           entry.result = { hint_id: entry.id, ...validate(Object.fromEntries(keys.map(k => [k, result[k]]))), provider: local ? 'local' : 'gemini', model: result.model };
-        } catch (e) { entry.error = textError(e); }
+        } catch (e) { entry.error = textError(e, this.cfg); }
         finally { if (!local) this.pending--; entry.finished = true; }
       })();
       for (const [oldKey, old] of this.cache) if (this.cache.size > 64 && old.finished && old !== entry) this.cache.delete(oldKey);

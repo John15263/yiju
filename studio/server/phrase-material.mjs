@@ -13,8 +13,30 @@ export function validatePhrases(items, reference) {
     item.hints.forEach(h => text(h, 500));
   }
   const compact = s => s.normalize('NFKC').replace(/\s+/gu, '');
-  check(compact(items.map(p => p.reference).join('')) === compact(reference), 'Chunks must preserve the complete reference in order');
-  return structuredClone(items);
+  const whole = list => compact(list.map(p => p.reference).join('')) === compact(reference);
+  const chunks = whole(items) ? items : alignChunks(items, reference);
+  check(chunks && whole(chunks), 'Chunks must preserve the complete reference in order');
+  return structuredClone(chunks);
+}
+// Providers without a strict schema (DeepSeek) often leave out the punctuation where a chunk ends or begins:
+// "On weekends" for "On weekends,", "cooking" for "cooking.", 「忙しいです」 without its 。. When every chunk is
+// otherwise found in the reference, word for word and in order, that punctuation is taken back from the
+// reference. Anything else (a word changed, chunks reordered) stays refused.
+function alignChunks(items, reference) {
+  const mark = /\p{P}/u, space = /\s/u, pieces = [];
+  let at = 0;
+  for (const [i, item] of items.entries()) {
+    const chunk = item.reference.trim(), next = items[i + 1]?.reference.trim();
+    while (at < reference.length && space.test(reference[at])) at++;
+    const start = at;
+    while (at < reference.length && mark.test(reference[at]) && !reference.startsWith(chunk, at)) at++;
+    if (!chunk || !reference.startsWith(chunk, at)) return null;
+    at += chunk.length;
+    while (at < reference.length && mark.test(reference[at]) && !(next && reference.startsWith(next, at))) at++;
+    pieces.push(reference.slice(start, at));
+  }
+  if (reference.slice(at).trim()) return null;
+  return items.map((item, i) => ({ ...item, reference: pieces[i] }));
 }
 export function phraseState(items, reference) {
   return { status: 'ready', items: validatePhrases(items, reference), index: 0, run: 0,

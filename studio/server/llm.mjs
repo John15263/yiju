@@ -49,21 +49,36 @@ async function chatJSON(packet, cfg, { instructions, schema, tokens = 4096, limi
     });
   } catch { throw new Error(`${name} network error or timeout`); }
   if (!response.ok) throw new Error(`${name} HTTP ${response.status}`);
-  const data = await response.json(), choice = data.choices?.[0], u = data.usage;
+  // The reply can still be cut off after its headers: DeepSeek sends them at once and the answer only when done.
+  let data;
+  try { data = await response.json(); } catch { throw new Error(`${name} network error or timeout`); }
+  const choice = data.choices?.[0], u = data.usage;
   // Thinking is inside completion_tokens and billed as output, so it is not counted a second time.
   cfg.usage?.record({ purpose, model: typeof data.model === 'string' ? data.model : model,
     usage: u && { promptTokenCount: u.prompt_tokens, candidatesTokenCount: u.completion_tokens } });
   check(choice?.finish_reason === 'stop', `Invalid ${name} response`);
   const raw = choice.message?.content;
   check(typeof raw === 'string' && raw && raw.length <= limit, `Invalid ${name} response`);
-  return { value: JSON.parse(raw), model: typeof data.model === 'string' ? data.model.slice(0, 100) : model };
+  const value = JSON.parse(raw);
+  return { value: strict ? value : trimmed(value, schema), model: typeof data.model === 'string' ? data.model.slice(0, 100) : model };
 }
 
-// DeepSeek refuses "json_schema" (tried 2026-09-25).
+// Without a strict schema a reply may carry fields nobody asked for (DeepSeek adds one now and then); they are
+// dropped rather than held against it. Everything asked for is still checked by whoever asked.
+export function trimmed(value, schema) {
+  if (!schema || typeof schema !== 'object' || !value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return schema.items ? value.map(item => trimmed(item, schema.items)) : value;
+  if (!schema.properties) return value;
+  return Object.fromEntries(Object.entries(value).filter(([key]) => Object.hasOwn(schema.properties, key))
+    .map(([key, item]) => [key, trimmed(item, schema.properties[key])]));
+}
+
+// DeepSeek refuses "json_schema" (tried 2026-09-25), and thinks first unless told not to (DEEPSEEK_THINKING).
 export function deepseekJSON(packet, cfg, opts, request = fetch) {
   check(cfg.deepseekKey, textKeyMissing({ textProvider: 'deepseek' }), 503);
   return chatJSON(packet, cfg, { model: cfg.deepseekModel, ...opts },
-    { name: 'DeepSeek', url: 'https://api.deepseek.com/chat/completions', apiKey: cfg.deepseekKey, strict: false }, request);
+    { name: 'DeepSeek', url: 'https://api.deepseek.com/chat/completions', apiKey: cfg.deepseekKey, strict: false,
+      extra: { thinking: { type: cfg.deepseekThinking ? 'enabled' : 'disabled' } } }, request);
 }
 
 // Qwen on Model Studio keeps to a strict schema when the schema is strict-shaped (tried in 一题, 2026-09-26);
@@ -79,13 +94,16 @@ export async function qwenJSON(packet, cfg, opts, request = fetch) {
   catch (e) { if (e.message === 'Qwen HTTP 400') return call(false); throw e; }
 }
 
-export function textError(error) {
-  const who = /^(DeepSeek|Qwen)\b/.exec(error.message)?.[1];
-  if (!who) return geminiError(error);
-  const name = who === 'Qwen' ? '千问' : 'DeepSeek';
-  if (new RegExp(`^${who} HTTP (401|403)$`).test(error.message)) return `${name}没有接受请求：key 不对，或者没有这个模型的权限。`;
-  if (error.message === `${who} HTTP 402`) return `${name}账户余额不足，充值后可以重试。`;
-  if (error.message === `${who} HTTP 429`) return `${name}请求太频繁，稍后再试。`;
-  if (error.message === `${who} network error or timeout`) return `${name}暂时连接不上或等待超时，可以重试。`;
-  return `这次未取得有效的${name}内容，可以重试。`;
+// What the learner is told when a text call fails. A reply that arrived but failed the checks carries no
+// provider's name, so it is told by the one chosen in the settings.
+export function textError(error, cfg = {}) {
+  const who = /^(Gemini|DeepSeek|Qwen)\b/.exec(error.message)?.[1] || { deepseek: 'DeepSeek', qwen: 'Qwen' }[cfg.textProvider] || 'Gemini';
+  if (who === 'Gemini') return geminiError(error);
+  // A space between Chinese and a Latin name, none between two Chinese words.
+  const name = who === 'Qwen' ? '千问' : 'DeepSeek', [before, after] = who === 'Qwen' ? ['', ''] : [' ', ' '];
+  if (new RegExp(`^${who} HTTP (401|403)$`).test(error.message)) return `${name}${after}没有接受请求：key 不对，或者没有这个模型的权限。`;
+  if (error.message === `${who} HTTP 402`) return `${name}${after}账户余额不足，充值后可以重试。`;
+  if (error.message === `${who} HTTP 429`) return `${name}${after}请求太频繁，稍后再试。`;
+  if (error.message === `${who} network error or timeout`) return `${name}${after}暂时连接不上或等待超时，可以重试。`;
+  return `这次未取得有效的${before}${name}${after}内容，可以重试。`;
 }

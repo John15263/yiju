@@ -87,11 +87,19 @@ export class Preparations {
   }
   async run(requestID, packet) {
     let result, model, failure;
-    try {
-      const response = await this.infer(packet, this.cfg);
-      fields(response, ['value', 'model'], ['value', 'model']); text(response.model, 100);
-      result = preparedExpression(response.value, packet); model = response.model;
-    } catch (e) { failure = `${textError(e)} 原文已保存。`; }
+    // A reply that arrived but failed the checks is asked for once more: a provider without a strict schema
+    // (DeepSeek) now and then words a chunk differently from its sentence, and a second answer usually holds.
+    // A refused key, an empty balance or a dead connection is not asked again.
+    for (let tries = 2; tries-- && !result;) {
+      try {
+        const response = await this.infer(packet, this.cfg);
+        fields(response, ['value', 'model'], ['value', 'model']); text(response.model, 100);
+        result = preparedExpression(response.value, packet); model = response.model; failure = null;
+      } catch (e) {
+        failure = `${textError(e, this.cfg)} 原文已保存。`;
+        if (/^(Gemini|DeepSeek|Qwen) (HTTP|network)/.test(e.message)) break;
+      }
+    }
     const s = this.board.read();
     if (s.preparation?.id !== requestID || s.preparation.status !== 'pending') return;
     Object.assign(s.preparation, failure ? { status: 'error', message: failure } : { status: 'ready', ...result, model });

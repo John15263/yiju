@@ -37,6 +37,9 @@ export function config(env = process.env) {
   const qwenTextModel = model('QWEN_TEXT_MODEL', 'qwen3.8-max');
   // Thinking first made Qwen's checks take 9–14 s in 一题 (2026-09-26), too slow to wait on, so it is off unless asked for.
   const qwenThinking = choice('QWEN_THINKING', ['on', 'off'], 'off') === 'on';
+  // DeepSeek thinks first by default: a preparation took 27–39 s that way and 7–11 s without (2026-09-27), and
+  // its checks outran their 20 s. Off unless asked for.
+  const deepseekThinking = choice('DEEPSEEK_THINKING', ['on', 'off'], 'off') === 'on';
   // The chunk gate: the text model both decides and explains. 'jev' keeps the older classifier path.
   const phraseGate = env.PHRASE_GATE?.trim() || 'gemini';
   if (!['gemini', 'jev'].includes(phraseGate)) throw new Error('Invalid PHRASE_GATE');
@@ -76,7 +79,7 @@ export function config(env = process.env) {
     hideConfidence: number('JEV_HIDE_MIN_CONFIDENCE', 0.9, 0, 1),
     minCueMs: number('JEV_MIN_CUE_MS', 3000, 0, 60000),
     phraseGate,
-    textProvider, geminiKey, geminiModel, geminiThinkingLevel, deepseekKey: env.DEEPSEEK_API_KEY?.trim() || '', deepseekModel,
+    textProvider, geminiKey, geminiModel, geminiThinkingLevel, deepseekKey: env.DEEPSEEK_API_KEY?.trim() || '', deepseekModel, deepseekThinking,
     qwenTextModel, qwenThinking, dashscopeKey: env.DASHSCOPE_API_KEY?.trim() || '', dashscopeRegion, dashscopeWorkspace,
     voiceProvider, geminiLiveModel, voiceThinkingLevel, qwenRealtimeModel, qwenVoice,
     speechProvider, geminiTtsModel, geminiTtsVoice,

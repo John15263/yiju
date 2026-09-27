@@ -18,7 +18,7 @@ export async function callGemini(packet, cfg, request = fetch) {
   return { ...result, changes: changeRows(result.changes), model };
 }
 
-const errorMessage = error => `${textError(error)} 答案已保存。`;
+const errorMessage = (error, cfg) => `${textError(error, cfg)} 答案已保存。`;
 
 export class Reviews {
   constructor(board, cfg, infer = callGemini) {
@@ -66,7 +66,7 @@ export class Reviews {
       result = await this.infer(packet, this.cfg);
       fields(result, ['message', 'suggestion', 'changes', 'score', 'model'], ['message', 'suggestion', 'score', 'model']);
       text(result.message, 4000); text(result.suggestion, 2000); text(result.model, 100); validateScore(result.score);
-    } catch (e) { failure = errorMessage(e); }
+    } catch (e) { failure = errorMessage(e, this.cfg); }
     const s = this.board.read(), r = s.rounds.find(r => r.id === roundID), review = r?.reviews.find(x => x.id === reviewID);
     if (!review || review.status !== 'pending') return;
     review.finished_at = now();

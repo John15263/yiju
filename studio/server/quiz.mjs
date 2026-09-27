@@ -56,7 +56,7 @@ export class Quizzes {
           judged = value.results.map(r => ({ ok: r?.ok === true, note: typeof r?.note === 'string' ? r.note.slice(0, 200) : '', by: this.cfg.textProvider || 'gemini' }));
         } catch {}
       }
-      pending.forEach((i, n) => { results[i] = judged?.[n] || { ok: false, note: '和批改的写法不一样，这次没能请 Gemini 判定。', by: 'local' }; });
+      pending.forEach((i, n) => { results[i] = judged?.[n] || { ok: false, note: `和批改的写法不一样，这次没能请${{ deepseek: ' DeepSeek ', qwen: '千问' }[this.cfg.textProvider] || ' Gemini '}判定。`, by: 'local' }; });
     }
     let current;
     try { current = this.target(body, ['answers'], ['answers']); } catch { return this.board.get(); }

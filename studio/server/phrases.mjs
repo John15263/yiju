@@ -126,7 +126,7 @@ export class Phrases {
       const response = await this.prepare(packet, this.cfg);
       fields(response.value, ['items'], ['items']); text(response.model, 100);
       result = { ...phraseState(response.value.items, packet.reference), model: response.model };
-    } catch (e) { failure = textError(e); }
+    } catch (e) { failure = textError(e, this.cfg); }
     const s = this.board.read(), r = s.rounds.find(r => r.id === roundID);
     if (r?.phrases?.generation !== generation || r.phrases.status !== 'pending') return;
     r.phrases = failure ? { status: 'error', message: failure } : result;

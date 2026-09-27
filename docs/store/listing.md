@@ -4,7 +4,7 @@
 
 ## 1. 上传包（Packages）
 
-上传 `dist/yiju-extension-0.4.1.zip`（在仓库里运行 `node edge/build.mjs` 生成，也可以从 [Releases](https://github.com/John15263/yiju/releases) 下载）。
+上传 `dist/yiju-extension-0.4.2.zip`（在仓库里运行 `node edge/build.mjs` 生成，也可以从 [Releases](https://github.com/John15263/yiju/releases) 下载）。
 
 包里的 `edge/_locales/<语言>/messages.json` 决定了商店里**不能再改**的两项，每种语言一份：
 
