@@ -76,7 +76,9 @@ export function trimmed(value, schema) {
 // DeepSeek refuses "json_schema" (tried 2026-09-25), and thinks first unless told not to (DEEPSEEK_THINKING).
 export function deepseekJSON(packet, cfg, opts, request = fetch) {
   check(cfg.deepseekKey, textKeyMissing({ textProvider: 'deepseek' }), 503);
-  return chatJSON(packet, cfg, { model: cfg.deepseekModel, ...opts },
+  // Thinking made a preparation take 31–42 s instead of 7–8 s (2026-09-27), so a call that thinks gets twice the wait.
+  const timeout = (cfg.deepseekThinking ? 2 : 1) * (opts.timeout ?? cfg.geminiTimeout);
+  return chatJSON(packet, cfg, { model: cfg.deepseekModel, ...opts, timeout },
     { name: 'DeepSeek', url: 'https://api.deepseek.com/chat/completions', apiKey: cfg.deepseekKey, strict: false,
       extra: { thinking: { type: cfg.deepseekThinking ? 'enabled' : 'disabled' } } }, request);
 }
