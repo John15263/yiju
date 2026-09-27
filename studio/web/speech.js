@@ -4,10 +4,13 @@
 // voices, which are free but read the text through Microsoft's service.
 
 // Chinese hints often quote a word or two of the target language; they are still read by a Chinese
-// voice. Kana means Japanese; text with no Han characters is read in the target language.
+// voice. Kana means Japanese; text with no Han characters is read in the target language. Learning Japanese,
+// kanji alone (毎日, 料理) are Japanese too, read as Japanese; only simplified characters Japanese never
+// uses make it Chinese.
+const CHINESE_ONLY = /[这们个说话语词读还对过让从问题时为么吗呢该应发样见给边]/u;
 export function langOf(text, target = 'en') {
   if (/[぀-ヿ]/u.test(text)) return 'ja-JP';
-  if (/\p{Script=Han}/u.test(text)) return 'zh-CN';
+  if (/\p{Script=Han}/u.test(text)) return target === 'ja' && !CHINESE_ONLY.test(text) ? 'ja-JP' : 'zh-CN';
   return target === 'ja' ? 'ja-JP' : 'en-US';
 }
 // Enhanced and premium voices are the ones someone chose to download; they sound far better. After
@@ -39,7 +42,7 @@ const onMac = () => /mac|iphone|ipad/i.test(globalThis.navigator?.userAgentData?
 const spoken = (text, key) => text.trim().replace(/(?:⌘|Ctrl)\s*↵/g, `${key} 回车`).replace(/(?:⌘|Ctrl)\s*\[/g, `${key} 左方括号`).replace(/(?:⌘|Ctrl)\s*\]/g, `${key} 右方括号`);
 const RATE = 24000;
 
-export function createSpeech({ enabled, busy, report = () => {}, engine = () => 'system', mac = onMac(),
+export function createSpeech({ enabled, busy, report = () => {}, engine = () => 'system', mac = onMac(), onReading = () => {},
   fetcher = (...args) => globalThis.fetch(...args), makeContext = () => new AudioContext({ sampleRate: RATE }) }) {
   const synth = globalThis.speechSynthesis, command = mac ? 'Command' : 'Control';
   let last = '', current = null, watchdog = null, waitingUtterance = null;
@@ -55,7 +58,7 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
     for (const source of item.sources) { try { source.stop(); } catch {} }
     item.sources.clear();
   }
-  function hush() { drop(waiting); drop(speaking); waiting = speaking = null; playHead = 0; }
+  function hush() { drop(waiting); drop(speaking); waiting = speaking = null; playHead = 0; onReading(null); }
   function play(item, samples) {
     const buffer = context.createBuffer(1, samples.length, RATE), channel = buffer.getChannelData(0);
     for (let i = 0; i < samples.length; i++) channel[i] = samples[i] / 0x8000;
@@ -64,7 +67,7 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
     playHead = Math.max(playHead, context.currentTime + 0.05);
     source.start(playHead); playHead += buffer.duration;
     item.sources.add(source); source.onended = () => item.sources.delete(source);
-    if (!item.heard) { item.heard = true; report({ ok: true, voice: item.voice }); }
+    if (!item.heard) { item.heard = true; report({ ok: true, voice: item.voice }); onReading(item.text); }
   }
   // The one waiting becomes the one speaking: what has arrived plays now, the rest as it comes.
   function next() {
@@ -85,7 +88,7 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
       next(); return;
     }
     const left = Math.max(0, playHead - context.currentTime);
-    setTimeout(() => { if (speaking === item) { speaking = null; next(); } }, left * 1000 + 30);
+    setTimeout(() => { if (speaking === item) { speaking = null; if (!waiting) onReading(null); next(); } }, left * 1000 + 30);
   }
   async function gemini(text, target) {
     const words = spoken(text, command), language = langOf(text, target), key = `${language}|${words}`;
@@ -139,7 +142,7 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
     if (voice) utterance.voice = voice;
     // A learner listening in the language being learned gets it a touch slower.
     utterance.rate = utterance.lang === 'zh-CN' ? 1 : 0.92;
-    utterance.onstart = () => { clearTimeout(watchdog); report({ ok: true, voice: `${voice?.name || '系统默认'}${why ? `；${why}` : ''}` }); };
+    utterance.onstart = () => { clearTimeout(watchdog); onReading(text); report({ ok: true, voice: `${voice?.name || '系统默认'}${why ? `；${why}` : ''}` }); };
     utterance.onerror = event => {
       clearTimeout(watchdog);
       if (!['interrupted', 'canceled'].includes(event.error)) report({ ok: false, reason: `出错：${event.error}` });
@@ -151,6 +154,7 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
       if (current !== utterance) return;
       current = null;
       if (waitingUtterance) { const { text: t, target: g } = waitingUtterance; waitingUtterance = null; utter(t, g); }
+      else onReading(null);
     };
     const busySpeaking = synth.speaking || synth.pending;
     if (busySpeaking) synth.cancel();
@@ -176,6 +180,14 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
       hush();
       if (current) waitingUtterance = { text, target }; else utter(text, target);
     },
+    // A hint clicked in the list: said now, even if reading aloud is off, and even if it was just said.
+    replay(text, target) {
+      if (busy() || !text?.trim()) return;
+      last = text;
+      if (engine() === 'gemini') { hush(); void gemini(text, target); return; }
+      if (!synth) return;
+      hush(); waitingUtterance = null; utter(text, target);
+    },
     // Asked for from settings, so it plays even while other things would keep it quiet.
     test(target) {
       last = '';
@@ -184,6 +196,6 @@ export function createSpeech({ enabled, busy, report = () => {}, engine = () => 
       utter(target === 'ja' ? '提示会这样念出来。ヒントはこう聞こえます。' : '提示会这样念出来。', target);
       setTimeout(() => utter(target === 'ja' ? 'ここまで大丈夫。' : 'Good so far. Keep going.', target), 2200);
     },
-    stop() { clearTimeout(watchdog); current = null; waitingUtterance = null; synth?.cancel(); hush(); last = ''; },
+    stop() { clearTimeout(watchdog); current = null; waitingUtterance = null; synth?.cancel(); hush(); last = ''; onReading(null); },
   };
 }

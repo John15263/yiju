@@ -33,7 +33,8 @@ export class Explanations {
   // a correction is only ever about one attempt, so it is keyed by everything on screen.
   keyOf(r, mode) {
     const chunk = mode.mode === 'learn' ? r.phrases.items[r.phrases.index] : null;
-    const basis = chunk ? ['learn', r.language, chunk.meaning, chunk.reference, chunk.hints?.[0] || ''] : [mode.mode, r.language, contextOf(r, mode)];
+    // v2: foreign words marked (2026-09-27); scripts from before are written again rather than replayed.
+    const basis = ['v2', ...(chunk ? ['learn', r.language, chunk.meaning, chunk.reference, chunk.hints?.[0] || ''] : [mode.mode, r.language, contextOf(r, mode)])];
     return sha256(JSON.stringify(basis));
   }
   kept(key) {

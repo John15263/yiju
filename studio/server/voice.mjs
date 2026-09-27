@@ -22,7 +22,7 @@ export const ETYMOLOGY = `他让你做词根词缀分析（或者问一个词是
 // Talking is easiest in his own language, so explanations are in Chinese; the words being learned are
 // said in the foreign language as they are. One recorded call out of 42 (2026-09-23) slid into English
 // throughout, so the rule is spelled out in every prompt and repeated when the tutor starts.
-const SPEAKING = `讲解语言：**一律用中文讲解**，这样他听得最轻松。外语的词、词组和例句用外语原样说出来，说清楚，说完再用中文解释。不要整段用外语讲——即使上下文里外语很多，或者他用外语提问，也用中文回答；只有他明确要你用外语说时才用外语。`;
+const SPEAKING = `讲解语言：**一律用中文讲解**，这样他听得最轻松。外语的词、词组和例句用外语原样说出来，说清楚，说完再用中文解释。不要整段用外语讲——即使上下文里外语很多，或者他用外语提问，也用中文回答；只有他明确要你用外语说时才用外语。\n\n读音：外语一律用那门语言本来的读音说，哪怕前后都是中文。**日语里用汉字写的词也要按日语读**：毎日 说成 まいにち，料理 说成 りょうり，绝不能用中文读音念日语汉字——这是语言学习，读错了他就学错了。英语按英语读。上下文里 {毎日|まいにち} 这样的花括号标的是外语，竖线后面是它的读音。`;
 
 // Explanations are read to him first (explain.mjs); the live tutor is opened afterwards, by hand, to ask about them.
 const SCRIPTED = `如果上下文里有“已经念过的讲解稿”，说明他打开实时语音之前，这一段讲解已经念给他听过了：不要从头再讲，他问什么答什么；他要你再讲某一部分时，才按下面的顺序讲那一部分。

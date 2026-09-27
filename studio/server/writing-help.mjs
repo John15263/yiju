@@ -96,7 +96,7 @@ export class WritingHelp {
     const { s, r } = this.target(body), entry = [...this.cache.values()].find(e => e.id === body.hint_id);
     check(entry?.result && entry.round_id === r.id && entry.window_start === r.window_start, '提示已过期，请重新获取。', 409);
     if (entry.seen.has(body.level)) return this.board.public(s);
-    const h = entry.result, detail = { hint_id: entry.id, hint_level: body.level, provider: h.provider, model: h.model,
+    const h = entry.result, detail = { hint_id: entry.id, hint_level: body.level, window_start: r.window_start, provider: h.provider, model: h.model,
       draft: entry.draft, caret: entry.caret, meaning: h.meaning, note: h.note,
       text: body.level === 1 ? '' : h[['', '', 'word', 'phrase', 'continuation'][body.level]] };
     r.support_events.push({ kind: 'writing_hint', at: new Date().toISOString(), level: body.level - 1, detail });

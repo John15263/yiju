@@ -1,5 +1,9 @@
-export function createWritingHelpUI({ api, render, speak = () => {} }) {
+import { createHintLog, sentenceHints } from './hint-log.js';
+
+export function createWritingHelpUI({ api, render, speak = () => {}, replay = () => {} }) {
   const $ = id => document.getElementById(id), input = $('writing-text');
+  // Every hint shown while the sentence is written stays in the list, the newest at the bottom.
+  const log = createHintLog($('writing-help-log'), { onPick: entry => replay(entry.spoken, round?.language) });
   // Background preparation is separate from display: an unrequested hint never rises above the Chinese idea.
   const AUTO_LEVEL = 1;
   let round = null, locked = false, composing = false, observed = '', practiceKey = '', version = 0, timer = null, idleSince = 0;
@@ -10,10 +14,7 @@ export function createWritingHelpUI({ api, render, speak = () => {} }) {
   const snapshot = () => round ? { round_id: round.id, window_start: round.window_start, draft: input.value, caret: input.selectionStart } : null;
   const key = s => s ? JSON.stringify(s) : '';
   const status = message => { $('writing-help-status').textContent = message; };
-  function clear() {
-    for (const id of ['writing-help-meaning', 'writing-help-words', 'writing-help-note']) $(id).textContent = '';
-    $('writing-help-result').hidden = true;
-  }
+  function clear() { log.clear(); }
   function valid(s, v) { return version === v && key(snapshot()) === key(s); }
   function present(result, s, v, showing) {
     seenQueue = seenQueue.then(async () => {
@@ -22,13 +23,9 @@ export function createWritingHelpUI({ api, render, speak = () => {} }) {
       render(state);
       if (!valid(s, v) || showing !== level) return;
       displayed = Math.max(displayed, showing);
-      $('writing-help-result').hidden = false;
-      $('writing-help-meaning').textContent = result.meaning;
-      $('writing-help-words').textContent = showing === 1 ? '' : result[['', '', 'word', 'phrase', 'continuation'][showing]];
-      $('writing-help-words').lang = round.language;
-      $('writing-help-note').textContent = showing > 1 ? result.note : '';
+      // The list shows it once the practice has recorded it (render above); here it is read aloud.
       status('');
-      speak(showing === 1 ? result.meaning : $('writing-help-words').textContent, round.language);
+      speak(showing === 1 ? result.meaning : result[['', '', 'word', 'phrase', 'continuation'][showing]], round.language);
       clearTimeout(stuckTimer);
       if (showing === 1 && result.status !== 'complete' && result.word && $('writing-help-auto').checked) stuckTimer = setTimeout(() => {
         if (valid(s, v) && displayed < 2 && !locked && !composing) { level = 2; present(result, s, v, 2); }
@@ -40,7 +37,8 @@ export function createWritingHelpUI({ api, render, speak = () => {} }) {
     // Only the window being used asks by itself; another one open on the same practice stays quiet.
     if (!round || locked || composing || (!manual && (!$('writing-help-auto').checked || !document.hasFocus()))) return;
     const now = Date.now();
-    timer = setTimeout(() => request(manual), manual ? 0 : Math.max(0, idleSince + 1500 - now, lastRequest + 2500 - now));
+    // Every hint stays in the list, so they may come quickly: after a 1 s pause, 1.5 s apart (2026-09-27; was 1.5 s and 2.5 s).
+    timer = setTimeout(() => request(manual), manual ? 0 : Math.max(0, idleSince + 1000 - now, lastRequest + 1500 - now));
   }
   async function request(manual = false) {
     if (!round || locked || composing) return;
@@ -70,7 +68,8 @@ export function createWritingHelpUI({ api, render, speak = () => {} }) {
     const nextPractice = s ? JSON.stringify([s.round_id, s.window_start]) : '';
     // Invalidate the request snapshot immediately, but keep visible help until its replacement is ready.
     if (nextPractice !== practiceKey) {
-      practiceKey = nextPractice; clear();
+      // The list follows the practice's own record, so it is not emptied here.
+      practiceKey = nextPractice;
       // The helper area stays empty until help is asked for.
       status('');
     }
@@ -99,11 +98,13 @@ export function createWritingHelpUI({ api, render, speak = () => {} }) {
     update(r, busy) {
       const wasLocked = locked;
       round = r?.stage === 'practice' ? r : null; locked = busy;
+      if (round) log.render(sentenceHints(round)); else log.clear();
       changed();
       // The sentence often opens while the page is still busy with the command that opened it, when
       // nothing may be scheduled; once that ends, the empty box still gets its first hint.
       if (wasLocked && !locked) schedule();
     },
+    reading: text => log.reading(text),
     async flush() {
       // Submission/navigation waits only for displayed-help records, never for generation.
       clearTimeout(timer); clearTimeout(stuckTimer); version++; queuedManual = ''; hint = null; displayed = 0; clear(); await seenQueue;

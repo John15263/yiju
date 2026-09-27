@@ -181,7 +181,7 @@ export class Phrases {
     input.hint_level = Math.max(input.hint_level, body.level);
     (input.hints ||= [])[body.level - 1] = written;
     r.support_events.push({ kind: 'phrase_hint', level: body.level, at: now(),
-      detail: { index: body.index, text: written, source, ...(auto ? { auto: true, trigger, draft: body.draft } : {}) } });
+      detail: { index: body.index, run: r.phrases.run || 0, text: written, source, ...(auto ? { auto: true, trigger, draft: body.draft } : {}) } });
     return this.commit(s);
   }
   advance(s, r, source) {

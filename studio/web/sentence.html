@@ -76,7 +76,7 @@
                 <button id="phrase-check" class="primary" aria-keyshortcuts="Meta+Enter Control+Enter">检查 · ⌘ ↵</button>
                 <button id="phrase-continue" hidden>参考后继续</button>
               </div>
-              <div class="desk-helper"><div id="phrase-marking" class="correction" hidden></div><p id="phrase-feedback" role="status"></p><p id="phrase-hint-text" aria-live="polite"></p></div>
+              <div class="desk-helper"><div id="phrase-marking" class="correction" hidden></div><p id="phrase-feedback" role="status"></p><ol id="phrase-hint-log" class="hint-log" aria-live="polite" aria-label="这一块的提示" hidden></ol></div>
             </div>
           </section>
 
@@ -88,7 +88,7 @@
             </div>
             <div class="desk-helper">
               <p id="writing-help-status" class="footnote" role="status"></p>
-              <div id="writing-help-result" hidden><p id="writing-help-meaning"></p><p id="writing-help-words"></p><p id="writing-help-note" class="footnote"></p></div>
+              <ol id="writing-help-log" class="hint-log" aria-live="polite" aria-label="整句的提示" hidden></ol>
               <div class="prompt" id="prompt-region" aria-live="polite"><p id="prompt-label" class="label"></p><div id="prompt-text"></div></div>
             </div>
           </section>
@@ -141,7 +141,8 @@
 
           <section id="explain-region" aria-label="讲解" hidden>
             <div class="explain-head"><p class="label" id="explain-title">讲解</p>
-              <button id="explain-toggle" class="quiet">听讲解</button><button id="explain-replay" class="quiet" hidden>重听</button></div>
+              <button id="explain-toggle" class="quiet">听讲解</button><button id="explain-replay" class="quiet" hidden>重听</button>
+              <select id="explain-speed" aria-label="朗读速度" title="朗读速度"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>
             <ol id="explain-lines"></ol>
             <p id="explain-status" class="footnote" role="status"></p>
           </section>

@@ -287,13 +287,17 @@ function render(next) {
 }
 const clozeUI = createClozeUI({ getState: () => state, api, render, error, command });
 // Hints are also read aloud, except while the tutor is talking.
+// The hint being read is marked in whichever list holds it.
+const hintLists = [];
 const speech = createSpeech({ enabled: () => $('hint-speech').checked, busy: () => voiceUI.isOpen() || explainUI.busy(), engine: () => readByBrowser() ? 'system' : 'gemini', fetcher: speak,
+  onReading: text => { for (const list of hintLists) list.reading(text); },
   report: result => put('hint-speech-status', result.ok ? `最近一次：已出声（${result.voice}）` : `最近一次：没出声，${result.reason}`) });
 // Starting to write ends the learning conversation first, so it never runs on into writing.
-const phrasesUI = createPhrasesUI({ getState: () => state, api, render, error, storageNote, renderMarkup, beforeWrite: () => voiceUI.stop(), speak: speech.say });
+const phrasesUI = createPhrasesUI({ getState: () => state, api, render, error, storageNote, renderMarkup, beforeWrite: () => voiceUI.stop(), speak: speech.say, replay: speech.replay });
 const composeUI = createComposeUI({ api, render, command, getState: () => state, error, beforeOpen: async () => { drawer = null; await clozeUI.flush(); await phrasesUI.flush(); } });
 const freewriteUI = createFreewriteUI({ api, onChange: () => render(state), onUse: text => composeUI.useWriting(text), onReturn: () => composeUI.openEntry() });
-const writingHelpUI = createWritingHelpUI({ api, render, speak: speech.say });
+const writingHelpUI = createWritingHelpUI({ api, render, speak: speech.say, replay: speech.replay });
+hintLists.push(phrasesUI, writingHelpUI);
 const quizUI = createQuizUI({ api, render, getState: () => state, error });
 // A hint read aloud never talks over an explanation, and an explanation starting ends one.
 const explainUI = createExplainUI({ api, auto: () => $('voice-auto').checked, before: () => speech.stop(), engine: () => readByBrowser() ? 'browser' : 'gemini', fetcher: speak });

@@ -1,9 +1,11 @@
 import { renderCorrection } from './correction.js';
+import { createHintLog, chunkHints } from './hint-log.js';
 
-export function createPhrasesUI({ api, render, getState, error, storageNote = () => {}, renderMarkup = () => null, beforeWrite = () => {}, speak = () => {} }) {
+export function createPhrasesUI({ api, render, getState, error, storageNote = () => {}, renderMarkup = () => null, beforeWrite = () => {}, speak = () => {}, replay = () => {} }) {
   const $ = id => document.getElementById(id), input = $('phrase-text');
+  const log = createHintLog($('phrase-hint-log'), { onPick: entry => replay(entry.spoken, current?.language) });
   let current = null, mounted = '', draftKey = '', working = '', composing = false, requested = '', ordered = '', focusPending = false, helpQueue = Promise.resolve();
-  let studyKey = '', studyShownAt = 0, autoTimer = null, idleSince = 0, autoAt = 0, autoDraft = null, hintSeen = null;
+  let studyKey = '', studyShownAt = 0, autoTimer = null, idleSince = 0, autoAt = 0, autoDraft = null, heardUpTo = null;
   // Hints come in the language being learned; hearing them read aloud is listening practice.
   const autoOn = () => $('writing-help-auto').checked, hintLanguage = () => 'target';
   const context = () => current ? { round_id: current.id, window_start: current.window_start, index: current.phrases?.index } : null;
@@ -41,13 +43,14 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
   const settled = saved => !saved?.completed && saved?.result?.text === input.value && (saved.result.cleared || saved.result.verdict === 'adjust');
   // Hints come by themselves, without a button: a first direction when the chunk opens and the box is
   // still empty, a hint about the draft at every pause, and the key words when nothing has changed for a
-  // while after a hint. The prepared wording itself only ever comes from Command + [.
-  const PAUSE = 1500, START = 4000, STUCK = 10000;
+  // while after a hint. The prepared wording itself only ever comes from Command + [. Every hint stays in the
+  // list below the box, so they may come quickly (2026-09-27: 1 s pause, 1.5 s apart; before, 1.5 s and 2.5 s).
+  const PAUSE = 1000, START = 3000, STUCK = 10000, APART = 1500;
   function scheduleAuto(delay = PAUSE) {
     clearTimeout(autoTimer);
     if (!autoOn() || !current || studying() || composing) return;
     const now = Date.now();
-    autoTimer = setTimeout(autoHint, Math.max(0, idleSince + delay - now, autoAt + 2500 - now));
+    autoTimer = setTimeout(autoHint, Math.max(0, idleSince + delay - now, autoAt + APART - now));
   }
   function autoHint() {
     // Only the window being used asks; another tab or browser open on the same practice stays quiet.
@@ -83,8 +86,8 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
   }
   // Revealed chunk references must leave the document, not merely be hidden.
   function clearWork() {
-    for (const id of ['phrase-progress', 'phrase-meaning', 'phrase-hint-text', 'phrase-feedback', 'phrase-marking']) $(id).textContent = '';
-    $('phrase-marking').hidden = true;
+    for (const id of ['phrase-progress', 'phrase-meaning', 'phrase-feedback', 'phrase-marking']) $(id).textContent = '';
+    $('phrase-marking').hidden = true; log.clear();
     input.value = ''; mounted = ''; focusPending = false;
   }
   function update(r, busy) {
@@ -130,8 +133,8 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
     const quizzing = p.step === 'quiz';
     $('phrase-work').hidden = studying() || quizzing;
     if (studying() || quizzing) {
-      for (const id of ['phrase-hint-text', 'phrase-feedback', 'phrase-marking']) $(id).textContent = '';
-      $('phrase-marking').hidden = true;
+      for (const id of ['phrase-feedback', 'phrase-marking']) $(id).textContent = '';
+      $('phrase-marking').hidden = true; log.clear();
       input.value = ''; mounted = ''; draftKey = ''; focusPending = false;
       const key = `${r.id}:${r.window_start}:${p.index}`;
       if (key !== studyKey) { studyKey = key; studyShownAt = Date.now(); }
@@ -139,7 +142,7 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
     }
     const key = `${r.id}:${r.window_start}:${p.index}`;
     if (key !== mounted) {
-      mounted = key; draftKey = `phrase-draft:${r.id}:${p.run || 0}:${p.index}`; autoDraft = null; hintSeen = null;
+      mounted = key; draftKey = `phrase-draft:${r.id}:${p.run || 0}:${p.index}`; autoDraft = null; heardUpTo = null;
       // A chunk that opens with an empty box gets a first direction without waiting to be asked.
       idleSince = Date.now(); scheduleAuto(START);
       try { input.value = localStorage.getItem(draftKey) ?? saved.text; } catch { input.value = saved.text; }
@@ -152,20 +155,12 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
     if (focusPending && !input.disabled) requestAnimationFrame(() => {
       if (mounted === key && current && !input.disabled && focusPending) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); focusPending = false; }
     });
-    // Live hints are written for this attempt; the prepared ones remain the fallback.
-    const shown = saved.hint_level === 3 ? [`参考：${item.reference}`]
-      : Array.from({ length: saved.hint_level }, (_, i) => saved.hints?.[i] || item.hints[i]);
-    $('phrase-hint-text').textContent = shown.join(' · ');
-    // A hint that arrives while writing is read aloud once — whichever line changed, the newest level
-    // first (a fresh pause hint replaces the first line even after the key words); hints already there
-    // when the chunk opens are not.
-    const lines = saved.hint_level === 3 ? [item.reference] : shown;
-    if (hintSeen === null) hintSeen = lines;
-    else if (lines.join('\n') !== hintSeen.join('\n')) {
-      const fresh = [...lines].reverse().find((line, i) => line !== hintSeen[lines.length - 1 - i]);
-      hintSeen = lines;
-      if (fresh) speak(fresh, r.language);
-    }
+    // Every hint of this chunk, as it came; the newest is read aloud once. Hints already there when the chunk
+    // opens are not.
+    const hints = chunkHints(r);
+    log.render(hints);
+    if (heardUpTo === null) heardUpTo = hints.length;
+    else if (hints.length > heardUpTo) { heardUpTo = hints.length; speak(hints.at(-1).spoken, r.language); }
     const confirming = settled(saved);
     $('phrase-check').disabled = busy || !!working || checking || (!confirming && !input.value.trim());
     // A running check is only shown by the button resting; no status line announces it.
@@ -203,5 +198,5 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
     if (current.phrases?.status !== 'ready' || event.target === input || event.target.closest?.('textarea, input, select, [contenteditable="true"]')) return;
     event.preventDefault(); input.focus(); void submit();
   });
-  return { update, hint, write, async flush() { clearTimeout(autoTimer); stash(); await helpQueue; } };
+  return { update, hint, write, reading: text => log.reading(text), async flush() { clearTimeout(autoTimer); stash(); await helpQueue; } };
 }

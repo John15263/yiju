@@ -13,7 +13,7 @@ const STYLE = {
   'zh-CN': '一位温和耐心的老师，吐字清楚，语速稍慢',
 };
 // An explanation is Chinese with the foreign words left as they are; each is said in its own language.
-const EXPLAIN_STYLE = '一位温和耐心的中文老师在给学生讲外语，吐字清楚，语速自然；遇到英语或日语的词句，用那门语言地道的发音念出来';
+const EXPLAIN_STYLE = '一位温和耐心的中文老师在给学生讲外语，吐字清楚，语速自然；遇到英语或日语的词句（日语写成假名，或放在「」里），用那门语言地道的发音念出来，不要念成中文';
 // Everything said is kept by what was said and how, so hearing it again costs nothing: a script replayed when a
 // sentence is practised again, the fixed hint lines that recur. Oldest go past the cap. The local server keeps
 // it on disk (ttsCacheDir); the extension hands over its own store as ttsCache, with the same read and write.
@@ -50,6 +50,24 @@ export function usageOf(u) {
     candidatesTokenCount: u.total_output_tokens, candidatesTokensDetails: details(u.output_tokens_by_modality), thoughtsTokenCount: u.total_thought_tokens };
 }
 
+// Why nothing was said, in words the page can show. The speech model's allowance is small (100 requests a day on
+// Tier 1, met on 2026-09-27) and every line and every hint is one request.
+export function refusal(error) {
+  const message = String(error?.message || '');
+  if (error?.code === 'rate_limit_exceeded' || /rate limit/i.test(message)) {
+    const perDay = /limit: (\d+) requests? per day/i.exec(message)?.[1];
+    const wait = /retry in (?:(\d+)h)?(?:(\d+)m)?/i.exec(message);
+    const hours = wait ? Number(wait[1] || 0) + (Number(wait[2] || 0) >= 30 ? 1 : 0) : 0;
+    return perDay ? `Gemini 朗读今天的 ${perDay} 次用完了${hours ? `，约 ${hours} 小时后恢复` : ''}` : 'Gemini 朗读的请求太频繁，稍等一会儿';
+  }
+  return message ? `Gemini 朗读出错：${message.slice(0, 120)}` : 'Gemini 朗读没有返回声音';
+}
+// How long to stop asking after a refusal: until the allowance comes back, or a minute.
+const restFor = error => {
+  const wait = /retry in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?/i.exec(String(error?.message || ''));
+  return wait ? ((Number(wait[1] || 0) * 60 + Number(wait[2] || 0)) * 60 + Number(wait[3] || 0)) * 1000 : 60000;
+};
+
 export class Speech {
   constructor(cfg, request = fetch) {
     // Called on its own: a browser's fetch refuses to run as a method of this object ("Illegal invocation").
@@ -71,9 +89,12 @@ export class Speech {
       res.end(pcm); return;
     }
     check(this.cfg.geminiKey, '朗读用的是 Gemini，请在「设置」里填写 Gemini 的 API key，或者改用浏览器自带的朗读。', 503);
+    // Refused a moment ago: not asked again until the allowance is back, so the page's own voice takes over at once.
+    check(!this.resting || Date.now() >= this.resting.until, this.resting?.message, 429);
     // A newer hint, or the page going away, drops the request so no audio nobody hears is paid for.
     const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 20000);
-    res.on('close', () => abort.abort());
+    let closed = false;
+    res.on('close', () => { closed = true; abort.abort(); });
     let upstream;
     try {
       upstream = await this.request(ENDPOINT, { method: 'POST', redirect: 'error', signal: abort.signal,
@@ -84,15 +105,21 @@ export class Speech {
           generation_config: { speech_config: [{ voice }] } }) });
     } catch { clearTimeout(timeout); check(false, 'Gemini 朗读连接不上或超时。', 502); }
     if (!upstream.ok) { clearTimeout(timeout); check(false, `Gemini 朗读没有接受请求（HTTP ${upstream.status}）。`, 502); }
-    res.writeHead(200, { 'Content-Type': 'audio/l16; rate=24000; channels=1', 'X-Voice': voiceHeader(`${model} · ${voice}`) });
-    let usage = null, buffer = '';
+    // The audio headers go out with the first sound: a refusal comes inside the stream, before any, and is then
+    // answered as an error instead of as silence.
+    let usage = null, buffer = '', started = false, failure = null;
     const kept = [];
     const handle = block => {
       const line = block.split('\n').find(l => l.startsWith('data:'));
       if (!line) return;
       let event;
       try { event = JSON.parse(line.slice(5)); } catch { return; }
-      if (typeof event.delta?.data === 'string' && event.delta.type !== 'text') { const pcm = fromBase64(event.delta.data); kept.push(pcm); res.write(pcm); }
+      if (event.error) failure ||= event.error;
+      if (typeof event.delta?.data === 'string' && event.delta.type !== 'text') {
+        const pcm = fromBase64(event.delta.data); kept.push(pcm);
+        if (!started) { started = true; res.writeHead(200, { 'Content-Type': 'audio/l16; rate=24000; channels=1', 'X-Voice': voiceHeader(`${model} · ${voice}`) }); }
+        res.write(pcm);
+      }
       usage = event.interaction?.usage || event.usage || usage;
     };
     try {
@@ -114,7 +141,13 @@ export class Speech {
       if (name && usage && kept.length && !abort.signal.aborted) {
         try { await this.cache.write(name, concat(kept)); } catch {}
       }
-      res.end();
+      if (started) res.end();
+    }
+    // Nothing was said and the page is still waiting: it is told why.
+    if (!started && !closed) {
+      const limited = failure?.code === 'rate_limit_exceeded', message = abort.signal.aborted && !failure ? 'Gemini 朗读等了 20 秒还没有声音。' : `${refusal(failure)}。`;
+      if (limited) this.resting = { until: Date.now() + restFor(failure), message };
+      check(false, message, limited ? 429 : 502);
     }
   }
 }
