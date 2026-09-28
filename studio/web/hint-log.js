@@ -1,14 +1,16 @@
-// Every hint given while writing, one message per hint in the order they came, newest at the bottom. Hints can
-// come faster than they are read aloud, and each new one used to replace the last on screen; here none is lost,
-// the one being read is marked, and clicking one reads it again (asked for by the learner, 2026-09-27).
+// Every hint given while writing, one message per hint, the newest at the top where it is seen at once (asked for
+// by the learner, 2026-09-28; the first version added them at the bottom and scrolled). Hints can come faster
+// than they are read aloud, and each new one used to replace the last on screen; here none is lost, the one being
+// read is marked, and clicking one reads it again.
 // An entry: { key, text, spoken, lang, tag?, note? } — `spoken` is what is read aloud and what the voice
 // reports back while reading it.
 export function createHintLog(list, { onPick = () => {} } = {}) {
   let entries = [], reading = null, visible = true;
+  // Entries are kept oldest first; the list shows them newest first.
   function mark() {
     // The newest entry with the words being read is the one marked, should the same words come twice.
     const at = reading ? entries.findLastIndex(e => e.spoken === reading) : -1;
-    [...list.children].forEach((item, i) => item.classList.toggle('reading', i === at));
+    [...list.children].forEach((item, i) => item.classList.toggle('reading', at >= 0 && i === entries.length - 1 - at));
   }
   function itemOf(entry) {
     const item = document.createElement('li');
@@ -23,16 +25,16 @@ export function createHintLog(list, { onPick = () => {} } = {}) {
   }
   return {
     render(next) {
-      // A new hint is added below the others, which stay where they are; another chunk starts a new list.
+      // A new hint goes on top of the others, which stay as they are; another chunk starts a new list.
       const grows = entries.length <= next.length && entries.every((e, i) => e.key === next[i]?.key);
       if (grows && next.length === entries.length) return;
-      if (grows) list.append(...next.slice(entries.length).map(itemOf));
-      else list.replaceChildren(...next.map(itemOf));
+      if (grows) list.prepend(...next.slice(entries.length).map(itemOf).reverse());
+      else list.replaceChildren(...next.map(itemOf).reverse());
       entries = next;
       list.hidden = !visible || !entries.length;
       mark();
-      // The newest is always in view: the list scrolls down to it as it comes.
-      list.scrollTo({ top: list.scrollHeight, behavior: grows ? 'smooth' : 'instant' });
+      // The newest is always in view: the list goes back to the top as one comes.
+      list.scrollTo({ top: 0, behavior: grows ? 'smooth' : 'instant' });
     },
     reading(text) { reading = text || null; mark(); },
     // Stepped aside while the writing is being checked or its correction is on screen.

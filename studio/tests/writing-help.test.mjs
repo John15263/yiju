@@ -36,10 +36,10 @@ test('whole-sentence hints can speak simple English, including the instant local
   let packet = null;
   const { help, request } = setup(t, async p => { packet = p; return answer; });
   const start = await help.request({ ...request(''), hint_language: 'target' });
-  assert.equal(start.meaning, 'Start with the first part of your idea.'); assert.equal(start.word, 'I');
+  assert.equal(start.meaning, 'Start with I.'); assert.equal(start.word, 'I');
   assert.equal((await help.request({ ...request(material.reference), hint_language: 'target' })).meaning,
-    'This sentence looks complete. Press Command Enter to get feedback.');
-  assert.equal((await help.request({ ...request(''), hint_language: 'zh' })).meaning, 'Start with the first part of your idea.', 'never Chinese, whatever an old page asks');
+    'This sentence looks complete. Send it to get feedback.');
+  assert.equal((await help.request({ ...request(''), hint_language: 'zh' })).meaning, 'Start with I.', 'never Chinese, whatever an old page asks');
   await help.request({ ...request('I really like '), hint_language: 'target' });
   assert.equal(packet.hint_language, 'target');
   await assert.rejects(help.request({ ...request('I really like '), hint_language: 'fr' }), /Invalid option/);

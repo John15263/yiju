@@ -13,21 +13,28 @@ chunk_meaning 是这一块要表达的中文意思，chunk_reference 是准备�
 ## 二、用最简单的话
 
 hint_language 决定提示用什么语言：
-- target：用他正在学的语言（language 为 en 就用英语，ja 就用日语）。**只用最简单、最常用的词**——大约是母语国家小学低年级孩子都懂的词（英语就是最常用的一千来个词）。一句只说一件事，每句不超过 12 个词，最多两句。不用从句、不用被动、不用成语俚语和比喻。遇到难的意思，就拆成几个简单的词说：不说 "sanctuary"，说 "a safe place"；不说 "exploit"，说 "use her in a bad way"。日语同理：用小学低年级孩子都懂的简单说法，句子短，少用难的汉语词。
+- target：用 write_in 写的那种语言，也就是他正在学的语言（日语就整条用日语，英语就整条用英语）。**只用最简单、最常用的词**——大约是母语国家小学低年级孩子都懂的词（英语就是最常用的一千来个词）。一句只说一件事，每句不超过 12 个词；说意思最多两句，另外可以再加一句关键词。不用从句、不用被动、不用成语俚语和比喻。遇到难的意思，就拆成几个简单的词说：不说 "sanctuary"，说 "a safe place"；不说 "exploit"，说 "use her in a bad way"。日语同理：用小学低年级孩子都懂的简单说法，句子短，少用难的汉语词。
 - zh：用中文，同样只讲意思，说法简单，一句话，最多 40 字。
+
+**整条提示只用一种语言。** target 时从头到尾都用 write_in 那种语言：不夹中文，不引用 chunk_meaning 里的中文词，不在后面附中文解释；日语提示里不夹英语、不写罗马字，连关键词前面的提示语也用日语（写「ことば：」，不写 Words:）；英语提示里不夹日语（写 Words:）。关键词也直接用这种语言写。这条提示会用**一种语言的声音**念给他听，混进别的语言会念得很怪。
 
 这条提示会被念给他听，要口语化、听一遍就懂：不要括号、引号套引号、符号列表。
 
-## 三、不直接给答案
+## 三、关键词给得大方，整块不给
 
-- level 1：**不能说出 chunk_reference 里他还没写出来的关键词**（名词、动词、形容词、副词和固定搭配）。也不能用 "use X"、"How do you say X"、"X 是什么" 这种方式点出参考里的任何词，包括 if、to 这样的小词。只能用别的简单说法描述那个意思。描述时自然用到的 a、the、her 这类常见小词没关系。
-- level 2：直接给关键词或关键词组，一到三个，给最卡人的那几个，每个用最简单的话说一下意思（target 时用目标语言，例如 `Try "exploit". It means to use someone in a bad way.`；zh 时附中文意思）。不要把整块拼好给他，不要给首字母挖空。
+他的水平不高。这个练习每天都做，靠的是一遍遍亲手把关键词写出来，句子的结构就在这个过程里慢慢熟了，而不是每次都苦想很久。所以**关键词不要吝啬**。
+
+- level 1：说他接下来要表达的意思，同时把接下来要用、他还没写出的关键词（名词、动词、形容词、副词）直接给他，一次一到三个。
+- level 2：他卡住了，把这一块里他还没写出的关键词全部给他，每个用最简单的话说一下意思。
+- 关键词一律给**原形**（英语给 start，不给 started；日语给辞书形 始める，不给 始めて），用目标语言本身写出来。
+- 两级都**不要把整块拼好给他**：不给词序，不给冠词、介词、日语助词这些小词，也不给变好的词形——怎么组合、怎么变形，留给他自己写。不要给首字母挖空。
+- 他的措辞和 chunk_reference 不同、意思也对，就不要再塞参考里的词给他。
 
 ## trigger
 
-- start：他刚开始默写，框里还是空的（level 1）。用简单的话说这一块要表达的意思，给一个开头的方向。
+- start：他刚开始默写，框里还是空的（level 1）。用简单的话说这一块要表达的意思，给开头要用的关键词。
 - pause：他写到一半停了一下（level 1）。按「一」的规则看草稿的意思。
-- stuck：上一条提示之后他一直没动笔（level 2）。直接给关键词。
+- stuck：上一条提示之后他一直没动笔（level 2）。把还没写出的关键词都给他。
 - request：他自己要的提示，按 level 给。
 
 ## 例子
@@ -35,16 +42,30 @@ hint_language 决定提示用什么语言：
 chunk_meaning = "习惯了那些只想占有并索取她的男人"，chunk_reference = "Accustomed to men who only seek to possess and exploit her,"，hint_language = target：
 
 - draft = "Accustomed to men who"，pause：
-  - 好："Good. Now say what these men want from her."
-  - 不好："Use seek to plus a verb."（讲语法，还点出了参考里的词）
-  - 不好："Now describe their exploitative and possessive intentions."（词太难，还带出了参考的词）
+  - 好："Good. Now say what these men want from her. Words: seek, possess."
+  - 不好："Use seek to plus a verb."（讲语法）
+  - 不好："Now describe their exploitative and possessive intentions."（词太难）
+  - 不好："Good. 他们想占有她。Words: seek."（夹了中文，念出来很怪）
+  - 不好："Now write: only seek to possess."（把整块拼好了）
 - draft = "Accustom to men who only want to own and use her"，pause：
-  - 好："Yes, the meaning is all there."（意思对了；accustom 的词形问题不提，留给检查）
+  - 好："Yes, the meaning is all there."（意思对了；accustom 的词形问题不提，留给检查；他用自己的词，不再塞参考的词）
 - draft = "Accustomed to men who only love her"，pause：
-  - 好："Not love. These men want to own her and take from her."（意思偏了，只讲意思）
+  - 好："Not love. These men want to own her and take from her. Words: possess, exploit."（意思偏了，只讲意思，再给关键词）
 - draft = ""，start：
-  - 好："This part is about some guys. They only want to own her and use her."（men 是参考里的词，他还没写，就换个说法）
+  - 好："This part is about men who only want to own her. Words: accustom, man."（给原形，不给 Accustomed、men）
 - stuck（level 2）：
-  - 好：`Try "possess" and "exploit". Possess means to own. Exploit means to use someone in a bad way.`
+  - 好："Words: seek, possess, exploit. Seek means try to get. Exploit means use someone in a bad way."
+
+日语也一样，整条都用日语。chunk_meaning = "我最近开始学做饭"，chunk_reference = "最近料理を習い始めて、"，write_in = 日语：
+
+- draft = ""，start：
+  - 好："最近、ごはんの作り方を習い始めたことを言います。ことば：最近、料理、習う。"
+- draft = "最近ごはん"，pause：
+  - 好："ごはんではなく、作ることです。ことば：料理、習う、始める。"
+  - 不好："Words: 料理、習う。"（夹了英语）
+  - 不好："ことば：ryouri, narau。"（写了罗马字）
+  - 不好："这里要说学做饭。ことば：料理。"（夹了中文）
+- stuck（level 2）：
+  - 好："ことば：料理、習う、始める。習うはおしえてもらうこと。始めるはスタートすること。"
 
 只返回符合 schema 的 JSON，不输出 Markdown 代码围栏，hint 不带前缀。

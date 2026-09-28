@@ -23,10 +23,12 @@ function opening(value, language, count) {
 // What the instant, model-free path says, in the language the hints are read in.
 const LOCAL = {
   zh: { complete: '这一句已经写完整，可以提交看看反馈。', next: '接着把这一句的意思表达完整。', note: '沿已有参考的一种接法，也可以用自己的表达。' },
-  en: { complete: 'This sentence looks complete. Press Command Enter to get feedback.', start: 'Start with the first part of your idea.',
-    next: 'Keep going. Say the next part of your idea.', note: 'This is one way to go on. Your own words are fine too.' },
-  ja: { complete: 'この文はできたみたい。Command Enter でフィードバックを見てね。', start: '言いたいことの最初の部分から書いてみて。',
-    next: 'その調子。次の部分を書いてみて。', note: 'これは続け方の一つ。自分の言葉でも大丈夫。' },
+  en: { complete: 'This sentence looks complete. Send it to get feedback.', start: 'Start with the first part of your idea.',
+    next: 'Keep going. Say the next part of your idea.', note: 'This is one way to go on. Your own words are fine too.',
+    first: w => `Start with ${w}.`, then: w => `Keep going. Next word: ${w}.` },
+  ja: { complete: 'この文はできたみたい。送ってフィードバックを見てね。', start: '言いたいことの最初の部分から書いてみて。',
+    next: 'その調子。次の部分を書いてみて。', note: 'これは続け方の一つ。自分の言葉でも大丈夫。',
+    first: w => `「${w}」から書いてみて。`, then: w => `その調子。つぎは「${w}」。` },
 };
 // A literal reference prefix can be continued instantly. Other phrasings go to Gemini.
 export function localWritingHelp(r, draft, caret, hintLanguage = 'zh') {
@@ -41,10 +43,13 @@ export function localWritingHelp(r, draft, caret, hintLanguage = 'zh') {
     cursor += content.length;
     if (typeof segment !== 'string' && cursor > offset) { cue = segment.hints[0]; break; }
   }
-  // The prepared cues are Chinese, so a target-language hint does without them.
-  const meaning = chinese ? (!offset ? r.meaning : cue ? `接下来的一处关键意思：${cue}` : say.next) : !offset ? say.start : say.next;
+  // The prepared cues are Chinese, so a target-language hint does without them. It names the next word itself:
+  // key words are given freely, in the one language the hint is read in (the learner, 2026-09-28).
+  const word = opening(rest, r.language, 1), named = word.replace(/^[\p{P}\s]+/u, '');
+  const meaning = chinese ? (!offset ? r.meaning : cue ? `接下来的一处关键意思：${cue}` : say.next)
+    : !named ? (!offset ? say.start : say.next) : !offset ? say.first(named) : say.then(named);
   return { status: 'continue', meaning,
-    word: opening(rest, r.language, 1), phrase: opening(rest, r.language, r.language === 'ja' ? 4 : 5), continuation: rest,
+    word, phrase: opening(rest, r.language, r.language === 'ja' ? 4 : 5), continuation: rest,
     note: say.note };
 }
 export class WritingHelp {
@@ -70,7 +75,8 @@ export class WritingHelp {
       check(local || textConfigured(this.cfg), `本地参考可直接提示；其它表达需要先配好文字服务。${textKeyMissing(this.cfg)}`, 503);
       check(local || this.pending < 2, '正在准备其它提示，可以继续写，稍后再按 Option + /。', 429);
       const collection = s.collections?.find(c => c.id === r.collection_id);
-      const packet = { language: r.language, hint_language: hintLanguage, intended_meaning: r.meaning, reference: r.reference, draft: body.draft,
+      // The language meaning and note are written in, said outright (some services mixed languages without it).
+      const packet = { language: r.language, write_in: r.language === 'ja' ? '日语（日本語）' : '英语（English）', hint_language: hintLanguage, intended_meaning: r.meaning, reference: r.reference, draft: body.draft,
         before_cursor: body.draft.slice(0, body.caret), after_cursor: body.draft.slice(body.caret),
         ...(collection ? { expression_context: { summary: collection.outline.summary, purpose: r.unit.purpose, connection: r.unit.connection } } : {}) };
       entry = { id: crypto.randomUUID(), round_id: r.id, window_start: r.window_start, draft: body.draft, caret: body.caret, seen: new Set() };

@@ -51,11 +51,30 @@ const normalize = s => s.normalize('NFKC').toLocaleLowerCase().trim().replace(/\
 const compact = s => normalize(s).replace(/[\s,，、]/gu, '');
 // Said without a model when the draft is still the start of the prepared wording. With target-language
 // hints the learner hears these too, so they are as plain as the model's.
+// Each in one language only: a hint is read aloud by a voice of one language, and a key name in English said by
+// a Japanese voice sounds wrong (2026-09-28).
 const ON_TRACK = {
   zh: ['到这里都对，接着往下写。', '这一块看起来写完整了，按 ⌘ ↵ 检查。'],
-  en: ['Good so far. Keep going.', 'That looks complete. Press Command Enter to check it.'],
-  ja: ['ここまで大丈夫。そのまま続けてね。', 'できたみたい。Command Enter でチェックしてね。'],
+  en: ['Good so far. Keep going.', 'That looks complete. Check it now.'],
+  ja: ['ここまで大丈夫。そのまま続けてね。', 'できたみたい。チェックしてみてね。'],
 };
+// Still on the prepared wording and pausing: the next word of it, for that is what the pause waits for. Key words
+// are given freely (the learner, 2026-09-28): writing them out again and again is how the structure sinks in.
+const NEXT = { zh: w => `到这里都对，下一个词是 ${w}。`, en: w => `Good so far. Next word: ${w}.`, ja: w => `ここまで大丈夫。つぎは「${w}」。` };
+// Little words are left for the learner to fit in; the next word worth giving is the next one that carries meaning.
+const LITTLE = { en: new Set(['a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or', 'but', 'with', 'by', 'from', 'as']) };
+export function nextWord(draft, reference, language) {
+  const written = compact(draft).length, lang = language === 'ja' ? 'ja' : 'en';
+  let at = 0, first = '';
+  for (const s of new Intl.Segmenter(lang, { granularity: 'word' }).segment(reference)) {
+    at += compact(s.segment).length;
+    if (!s.isWordLike || at <= written) continue;
+    first ||= s.segment;
+    const little = lang === 'ja' ? /^[\u3041-\u309f]$/u.test(s.segment) : LITTLE.en.has(s.segment.toLowerCase());
+    if (!little) return s.segment;
+  }
+  return first;
+}
 // Level one without Gemini: point back at the meaning on screen, in the language being learned.
 const MEANING_FIRST = { en: 'Look at the meaning above. Say it in easy words, one small part at a time.', ja: '上の意味を見てね。かんたんなことばで、少しずつ書いてみよう。' };
 export const onTrack = (hintLanguage, language) => ON_TRACK[hintLanguage === 'target' ? language : 'zh'] || ON_TRACK.zh;
@@ -158,13 +177,16 @@ export class Phrases {
     let written = body.level === 3 ? opened.item.reference : body.level === 1 ? (MEANING_FIRST[opened.r.language] || MEANING_FIRST.en) : opened.item.hints[1];
     let source = body.level === 3 ? 'reference' : 'prepared';
     if (trigger === 'pause' && followsReference(body.draft, opened.item.reference)) {
-      const [going, done] = onTrack(hintLanguage, opened.r.language);
-      written = compact(body.draft) === compact(opened.item.reference) ? done : going;
+      const [going, done] = onTrack(hintLanguage, opened.r.language), next = nextWord(body.draft, opened.item.reference, opened.r.language);
+      const say = NEXT[hintLanguage === 'target' ? opened.r.language : 'zh'] || NEXT.zh;
+      written = compact(body.draft) === compact(opened.item.reference) ? done : next ? say(next) : going;
       source = 'local';
     } else if (body.level < 3 && textConfigured(this.cfg) && this.hinting < 3) {
       this.hinting++;
       try {
-        const live = (await this.writeHint({ language: opened.r.language, chunk_meaning: opened.item.meaning,
+        // The language the hint is written in, said outright: told only `language: ja`, some services wrote Japanese
+        // hints in English or Chinese (2026-09-28).
+        const live = (await this.writeHint({ language: opened.r.language, write_in: opened.r.language === 'ja' ? '日语（日本語）' : '英语（English）', chunk_meaning: opened.item.meaning,
           chunk_reference: opened.item.reference, draft: body.draft || '', level: body.level, trigger,
           hint_language: hintLanguage }, this.cfg)).value;
         fields(live, ['hint'], ['hint']); text(live.hint, 500);

@@ -429,7 +429,7 @@ test('a pause in writing brings a Chinese hint about the draft, without climbing
   await phrases.hint(request({ level: 1, draft: 'I enjoy', auto: true }));
   let input = board.get().active.phrases.inputs[0];
   assert.equal(asked.length, 0);
-  assert.equal(input.hints[0], 'Good so far. Keep going.'); assert.equal(input.hint_level, 1);
+  assert.equal(input.hints[0], 'Good so far. Next word: cooking.'); assert.equal(input.hint_level, 1);
 
   // Its own wording goes to Gemini, told this was a pause rather than a request, and follows the draft.
   await phrases.hint(request({ level: 1, draft: 'I really love', auto: true }));
@@ -487,9 +487,9 @@ test('hints can speak simple English like a mentor, down to the lines said witho
   const live = async packet => { asked.push(packet); return { value: { hint: 'Nice. Now say which activity you like.' }, model: 'lite' }; };
   const { phrases, board, request } = setup(t, undefined, true, undefined, null, 'gemini', live);
   await phrases.hint(request({ level: 1, draft: 'I enjoy', auto: true, hint_language: 'target' }));
-  assert.equal(board.get().active.phrases.inputs[0].hints[0], 'Good so far. Keep going.');
+  assert.equal(board.get().active.phrases.inputs[0].hints[0], 'Good so far. Next word: cooking.');
   await phrases.hint(request({ level: 1, draft: 'I enjoy cooking,', auto: true, hint_language: 'target' }));
-  assert.equal(board.get().active.phrases.inputs[0].hints[0], 'That looks complete. Press Command Enter to check it.');
+  assert.equal(board.get().active.phrases.inputs[0].hints[0], 'That looks complete. Check it now.');
   await phrases.hint(request({ level: 1, draft: 'I really love', auto: true, hint_language: 'target' }));
   assert.equal(asked[0].hint_language, 'target', 'Gemini is told which language to hint in');
   await phrases.hint(request({ level: 2, draft: 'I really love' }));

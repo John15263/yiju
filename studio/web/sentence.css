@@ -116,10 +116,12 @@ summary{cursor:pointer;font-size:13px;color:var(--muted);padding:14px 0}
 #chunk-note-text:empty{display:none}
 #chunk-note[data-status=adjust]{background:#fbf5e9;color:#805b24}
 /* Hints arrive while writing and are read at a glance, so they sit close to the text's own size. Every one stays,
-   newest at the bottom; the list scrolls itself to it, and the one being read aloud is marked. */
+   newest on top, and the one being read aloud is marked. */
 .hint-log{list-style:none;margin:10px 0 0;padding:0;max-height:13.5em;overflow-y:auto;overscroll-behavior:contain;font-size:17px;line-height:1.65;color:var(--ink)}
 .hint-log li{margin:0 0 4px;padding:3px 8px;border-radius:6px;cursor:pointer;transition:background .2s}
-.hint-log li:last-child{animation:rise .16s ease-out}
+.hint-log li:first-child{animation:rise .16s ease-out}
+/* The newest, on top, reads first; the ones before it step back a little. */
+.hint-log li:not(:first-child):not(.reading){color:var(--muted)}
 .hint-log li:hover{background:var(--soft)}
 .hint-log li.reading{background:#e7efe2;color:var(--accent)}
 .hint-tag{display:inline-block;margin:0 8px 0 0;padding:0 7px;border:1px solid var(--line);border-radius:999px;font-size:12px;line-height:1.7;color:var(--muted);vertical-align:1px}
