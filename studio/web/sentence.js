@@ -13,6 +13,7 @@ import { voiceMode, chunkComparison, loose } from './voice-mode.js';
 import { deskView, markup, openQuiz, supportSummary, SUPPORT_LEVELS } from './view.js';
 import { request, subscribe, speak, onSource } from './backend.js';
 import { createSettings } from './settings.js';
+import { dollars, googleDayStart, speechCounts } from './usage-text.js';
 const $ = id => document.getElementById(id);
 let state = null, busy = false, reviewBusy = false, settings = null, writingKey = null, drawer = null;
 // The moment that starts a call by itself (a chunk to study, a correction to explain) at the last render;
@@ -26,7 +27,9 @@ const api = (path, body) => request('/api/sentence' + path, body);
 // Who wrote a piece of feedback, by the service that was set when it was asked for.
 const WRITERS = { gemini: 'Gemini', deepseek: 'DeepSeek', qwen: '千问' };
 // Hints and explanations are read by Gemini's speech model or by the browser's own voices, as set in settings.
-const readByBrowser = () => settings?.speech_provider === 'browser';
+// Who reads aloud: 'mixed' has Gemini read the explanations and the browser the hints.
+const speechBy = () => settings?.speech_provider || 'browser';
+const hintsByBrowser = () => speechBy() !== 'gemini', explainByBrowser = () => speechBy() === 'browser';
 function error(e) { put('error', e.message); show('error', true); }
 // The learner's own sentence, marked against the returned suggestion. Nothing here is invented.
 function renderMarkup(id, text, suggestion, language) {
@@ -91,7 +94,7 @@ function render(next) {
   if (!next || (state && next.revision < state.revision)) return;
   const oldRound = state?.active?.id, oldStage = state?.active?.stage, oldCompletion = state?.completion?.round_id;
   state = next; const r = state.active;
-  put('gemini-setting', !settings ? '正在读取服务设置…' : settings.gemini_configured ? `文字：${settings.text_name} · ${settings.gemini_model}；语音陪练：${settings.voice_configured ? settings.voice_name : settings.voice_provider === 'none' ? '不用' : '还没配好'}；朗读：${readByBrowser() ? '浏览器自带' : 'Gemini'}` : '还没有配好文字服务：点下面的「服务与 key」选服务商、填 key。');
+  put('gemini-setting', !settings ? '正在读取服务设置…' : settings.gemini_configured ? `文字：${settings.text_name} · ${settings.gemini_model}；语音陪练：${settings.voice_configured ? settings.voice_name : settings.voice_provider === 'none' ? '不用' : '还没配好'}；朗读：${{ mixed: '讲解 Gemini、提示浏览器自带', gemini: 'Gemini', browser: '浏览器自带' }[speechBy()] || '浏览器自带'}` : '还没有配好文字服务：点下面的「服务与 key」选服务商、填 key。');
   put('cloze-review-note', !settings ? '正在读取整句审查设置…' : settings.gemini_configured ? `保存后由 ${settings.text_name} 自动检查整句，反馈直接显示在这里。` : '整句审查尚未启用：先在「服务与 key」里配好文字服务。仍可保存。');
   const composing = composeUI.update(state, settings);
   const freewriting = freewriteUI.isOpen();
@@ -289,7 +292,7 @@ const clozeUI = createClozeUI({ getState: () => state, api, render, error, comma
 // Hints are also read aloud, except while the tutor is talking.
 // The hint being read is marked in whichever list holds it.
 const hintLists = [];
-const speech = createSpeech({ enabled: () => $('hint-speech').checked, busy: () => voiceUI.isOpen() || explainUI.busy(), engine: () => readByBrowser() ? 'system' : 'gemini', fetcher: speak,
+const speech = createSpeech({ enabled: () => $('hint-speech').checked, busy: () => voiceUI.isOpen() || explainUI.busy(), engine: () => hintsByBrowser() ? 'system' : 'gemini', fetcher: speak,
   onReading: text => { for (const list of hintLists) list.reading(text); },
   report: result => put('hint-speech-status', result.ok ? `最近一次：已出声（${result.voice}）` : `最近一次：没出声，${result.reason}`) });
 // Starting to write ends the learning conversation first, so it never runs on into writing.
@@ -300,7 +303,7 @@ const writingHelpUI = createWritingHelpUI({ api, render, speak: speech.say, repl
 hintLists.push(phrasesUI, writingHelpUI);
 const quizUI = createQuizUI({ api, render, getState: () => state, error });
 // A hint read aloud never talks over an explanation, and an explanation starting ends one.
-const explainUI = createExplainUI({ api, auto: () => $('voice-auto').checked, before: () => speech.stop(), engine: () => readByBrowser() ? 'browser' : 'gemini', fetcher: speak });
+const explainUI = createExplainUI({ api, auto: () => $('voice-auto').checked, before: () => speech.stop(), engine: () => explainByBrowser() ? 'browser' : 'gemini', fetcher: speak });
 const voiceUI = createVoiceUI({ getState: () => state, render, error, quiet: () => { speech.stop(); explainUI.stop(); },
   // Nothing is being written while a chunk is studied or feedback is read, so the tutor is not told about a draft box.
   draftOf: () => {
@@ -355,13 +358,16 @@ async function showAnki(flush = false) {
 }
 $('anki-flush').onclick = () => { put('anki-status', '正在推送…'); void showAnki(true); };
 // What the practice has cost so far, from the usage Google reported on each call.
-const dollars = v => v >= 1 ? `$${v.toFixed(2)}` : v >= 0.01 ? `$${v.toFixed(3)}` : v > 0 ? `$${v.toFixed(4)}` : '$0';
 async function showUsage() {
   try {
     const u = await request('/api/usage');
     put('usage-totals', u.since
       ? `今天 ${dollars(u.today.usd)}（${u.today.calls} 次调用）· 近 7 天 ${dollars(u.week.usd)} · 累计 ${dollars(u.all.usd)} · 从 ${new Date(u.since).toLocaleDateString()} 开始记录`
       : '还没有记录到调用。之后每次调用模型都会记在这里。');
+    // Gemini's speech models count their allowance per model, over Google's day.
+    const counts = speechCounts(u.speech);
+    put('usage-speech', counts ? `Gemini 朗读（Google 的一天从 ${googleDayStart(u.speech.since)} 算起）：${counts}。Tier 1 每个朗读模型每天 100 次、每分钟 10 次；一个用完自动换另一个，都用完就改用浏览器自带的声音。` : '');
+    show('usage-speech', !!counts);
     $('usage-breakdown').replaceChildren(...u.week_by_purpose.map(p => {
       const li = document.createElement('li'), name = document.createElement('span'), cost = document.createElement('span');
       name.textContent = p.label || p.purpose;
@@ -428,7 +434,7 @@ async function loadConfig() {
   try {
     settings = await request('/api/config');
     voiceUI.configure(settings);
-    put('speech-engine-note', readByBrowser() ? '（用浏览器自带的声音）' : '（用 Gemini 朗读）');
+    put('speech-engine-note', hintsByBrowser() ? '（用浏览器自带的声音）' : '（用 Gemini 朗读）');
     render(state);
     if (!settings.gemini_configured && !askedForKeys) { askedForKeys = true; void settingsUI.open(); }
   } catch (e) { error(new Error(`无法读取服务设置：${e.message}`)); }

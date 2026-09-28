@@ -5,7 +5,7 @@ import { request, allowAnki, ankiNote, local } from './backend.js';
 
 const $ = id => document.getElementById(id);
 const KEYS = ['GEMINI_API_KEY', 'DEEPSEEK_API_KEY', 'DASHSCOPE_API_KEY'];
-const NAMES = { gemini: 'Gemini', deepseek: 'DeepSeek', qwen: '阿里云百炼', none: '不用语音', browser: '浏览器自带' };
+const NAMES = { gemini: 'Gemini', deepseek: 'DeepSeek', qwen: '阿里云百炼', none: '不用语音', browser: '浏览器自带', mixed: 'Gemini 讲解 + 浏览器提示' };
 
 export function createSettings({ onSaved = () => {} } = {}) {
   const form = $('settings-form'), dialog = $('settings');
@@ -16,7 +16,7 @@ export function createSettings({ onSaved = () => {} } = {}) {
   function fit() {
     const text = picked('TEXT_PROVIDER'), voice = picked('VOICE_PROVIDER'), speech = picked('SPEECH_PROVIDER');
     // One Model Studio key serves both Qwen text and Qwen voice; one Gemini key serves text, voice and speech.
-    const need = { gemini: text === 'gemini' || voice === 'gemini' || speech === 'gemini', deepseek: text === 'deepseek', qwen: voice === 'qwen' || text === 'qwen' };
+    const need = { gemini: text === 'gemini' || voice === 'gemini' || speech === 'gemini' || speech === 'mixed', deepseek: text === 'deepseek', qwen: voice === 'qwen' || text === 'qwen' };
     for (const field of form.querySelectorAll('[data-need]')) field.hidden = !need[field.dataset.need];
     $('dashscope-link').href = $('DASHSCOPE_REGION').value === 'ap-southeast-1'
       ? 'https://modelstudio.console.alibabacloud.com/' : 'https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key';

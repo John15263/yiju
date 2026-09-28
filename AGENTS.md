@@ -29,7 +29,7 @@ node edge/build.mjs    # 生成 dist/edge/，里面有 manifest.json
 侧边栏第一次打开会自动弹出「服务与 key」；以后在整理页下方，或者右上角「⋯ → 练习记录与设置」里都能打开。**让用户自己在那里粘贴 key**，不要让他们把 key 发到对话里。文字、语音陪练、朗读是分开选的：
 
 - **在中国大陆**：一个阿里云百炼的 key 就够了。文字选「阿里云百炼（千问）」，语音选「阿里云百炼」，区域选「中国大陆（北京）」，**业务空间 ID 必填**（插件里的语音走 WebRTC，必须用业务空间的专属地址），朗读选「浏览器自带」。key 在 https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key ，区域选华北2（北京）；业务空间 ID 点控制台右上角的业务空间图标可以看到。文字也可以用 DeepSeek（https://platform.deepseek.com/api_keys）。
-- **能用 Google 的话**：三项都选 Gemini，填一个 Gemini key（https://aistudio.google.com/apikey）。
+- **能用 Google 的话**：文字和语音选 Gemini，朗读选「讲解用 Gemini，提示用浏览器自带」（推荐：Gemini 朗读每个模型每天只有 100 次），填一个 Gemini key（https://aistudio.google.com/apikey）。
 
 填好后点「保存并测试」，文字、语音陪练、朗读三行都显示"✓ 可用"就好了；显示 ✗ 会写原因（key 不对、缺业务空间 ID 等）。
 

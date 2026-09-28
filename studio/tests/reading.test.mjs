@@ -63,11 +63,28 @@ test('Gemini speech that is refused says why, and is not asked again until the a
   const res = { head: null, on() {}, writeHead(status) { res.head = status; }, write() {}, end() {} };
   const speech = new Speech({ geminiKey: 'k', geminiTtsModel: 'gemini-3.8-flash-lite-tts', geminiTtsVoice: 'Kore' }, request);
   await assert.rejects(speech.stream({ text: '讲解', language: 'zh-CN', kind: 'explain' }, {}, res),
-    e => e.status === 429 && e.message === 'Gemini 朗读今天的 100 次用完了，约 17 小时后恢复。');
+    e => e.status === 429 && e.message === 'Gemini 朗读今天的 100 次用完了（两个朗读模型都用完了），约 17 小时后恢复。');
   assert.equal(res.head, null, 'no audio headers went out before the refusal');
+  assert.equal(asked, 2, 'the other speech model was tried before giving up');
   await assert.rejects(speech.stream({ text: '下一行', language: 'zh-CN', kind: 'explain' }, {}, res), e => e.status === 429);
-  assert.equal(asked, 1, 'the second line did not ask Gemini again');
+  assert.equal(asked, 2, 'the second line did not ask Gemini again');
   assert.equal(refusal({ message: 'boom' }), 'Gemini 朗读出错：boom');
+});
+
+test('when one speech model has spent its allowance, the other one reads, and the spent one is left alone', async () => {
+  const refused = { error: { code: 'rate_limit_exceeded', message: 'Rate limit exceeded (limit: 100 requests per day on Tier 1). Please retry in 17h.' } };
+  const sse = events => new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(events.map(e => `event: x\ndata: ${JSON.stringify(e)}\n\n`).join(''))); c.close(); } });
+  const asked = [];
+  const request = async (url, options) => { const { model } = JSON.parse(options.body); asked.push(model);
+    return { ok: true, body: sse(model === 'gemini-3.8-flash-lite-tts' ? [{ event_type: 'error', ...refused }]
+      : [{ event_type: 'step.delta', delta: { type: 'audio', data: Buffer.from([1, 2]).toString('base64') } }]) }; };
+  const speech = new Speech({ geminiKey: 'k', geminiTtsModel: 'gemini-3.8-flash-lite-tts', geminiTtsVoice: 'Kore' }, request);
+  const heard = () => { const res = { head: null, chunks: [], on() {}, writeHead(status, headers) { res.head = { status, headers }; }, write(b) { res.chunks.push(b); }, end() {} }; return res; };
+  const first = heard();
+  await speech.stream({ text: '讲解', language: 'zh-CN', kind: 'explain' }, {}, first);
+  assert.equal(first.head.status, 200); assert.match(decodeURIComponent(first.head.headers['X-Voice']), /gemini-3\.8-flash-tts/);
+  await speech.stream({ text: '下一行', language: 'zh-CN', kind: 'explain' }, {}, heard());
+  assert.deepEqual(asked, ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts', 'gemini-3.8-flash-tts'], 'the spent model is not asked again');
 });
 
 test('a whole line of audio becomes a WAV file an <audio> element can play at any speed', async () => {
@@ -76,4 +93,28 @@ test('a whole line of audio becomes a WAV file an <audio> element can play at an
   assert.equal(blob.type, 'audio/wav'); assert.equal(bytes.byteLength, 44 + 6);
   assert.equal(bytes.getUint32(24, true), 24000); assert.equal(bytes.getUint32(40, true), 6);
   assert.deepEqual([bytes.getInt16(44, true), bytes.getInt16(46, true), bytes.getInt16(48, true)], [1, -2, 3]);
+});
+
+test('usage counts each Gemini speech model over Google’s day and says it in a few characters for the toolbar', async t => {
+  const { Store } = await import('../server/store.mjs');
+  const { Usage, pacificMidnight } = await import('../server/usage.mjs');
+  const { badgeDollars, speechModelName, speechCounts } = await import('../web/usage-text.js');
+  // 21:00 in Beijing (13:00 UTC) is 06:00 in California, whose day began at 07:00 UTC — 15:00 in Beijing.
+  const at = new Date('2026-09-27T13:00:00Z');
+  assert.equal(pacificMidnight(at).toISOString(), '2026-09-27T07:00:00.000Z');
+  assert.equal(pacificMidnight(new Date('2026-12-01T09:00:00Z')).toISOString(), '2026-12-01T08:00:00.000Z', 'winter time: 16:00 in Beijing');
+  const store = new Store(':memory:'); t.after(() => store.close());
+  const log = (at, purpose, model, usd) => store.logUsage({ at, purpose, model, round_id: null, text_in: 1, audio_in: 0, text_out: 1, audio_out: 1, thoughts: 0, usd });
+  log('2026-09-27T06:59:00.000Z', 'explain_speech', 'gemini-3.8-flash-lite-tts', 0.001);   // before Google's day
+  log('2026-09-27T08:00:00.000Z', 'explain_speech', 'gemini-3.8-flash-lite-tts', 0.001);
+  log('2026-09-27T08:01:00.000Z', 'hint_speech', 'gemini-3.8-flash-lite-tts', 0.001);
+  log('2026-09-27T09:00:00.000Z', 'hint_speech', 'gemini-3.8-flash-tts', 0.002);
+  log('2026-09-27T09:30:00.000Z', 'prepare', 'deepseek-flash', null);
+  const u = new Usage(store).summary(at);
+  assert.equal(u.speech.since, '2026-09-27T07:00:00.000Z');
+  assert.deepEqual(u.speech.by_model, [{ model: 'gemini-3.8-flash-lite-tts', calls: 2 }, { model: 'gemini-3.8-flash-tts', calls: 1 }]);
+  assert.equal(speechCounts(u.speech), 'Flash Lite 2 次，Flash 1 次');
+  assert.equal(u.all.unpriced, 1, 'DeepSeek has no price here, and is counted as such');
+  assert.equal(speechModelName('gemini-3.8-flash-lite-tts'), 'Flash Lite');
+  assert.deepEqual([0.004, 0.18, 1.25, 9.96, 12.4].map(badgeDollars), ['$.00', '$.18', '$1.3', '$10', '$12']);
 });

@@ -16,6 +16,14 @@ export const PURPOSES = {
   quiz_check: '改错小测判定', hint_speech: '提示朗读', explain_learn: '讲解稿（学习）', explain_fix: '讲解稿（批改）', explain_speech: '讲解朗读', voice_learn: '语音讲解', voice_fix: '批改讲解', voice_write: '语音陪练（试写）',
 };
 
+// Google counts a day's requests, and so the speech models' daily allowance, from midnight Pacific time.
+export function pacificMidnight(now = new Date()) {
+  const part = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hourCycle: 'h23',
+    hour: 'numeric', minute: 'numeric', second: 'numeric' }).formatToParts(now).map(p => [p.type, p.value]));
+  return new Date(now.getTime() - (((Number(part.hour) * 60 + Number(part.minute)) * 60 + Number(part.second)) * 1000 + now.getMilliseconds()));
+}
+const SPEECH = ['hint_speech', 'explain_speech'];
+
 const count = value => Number.isInteger(value) && value > 0 ? value : 0;
 const modality = (details, kind) => (Array.isArray(details) ? details : []).reduce((n, d) => d?.modality === kind ? n + count(d.tokenCount) : n, 0);
 // REST reports candidatesTokenCount, Live reports responseTokenCount; both put the rest in details.
@@ -54,7 +62,10 @@ export class Usage {
     const week = new Date(day); week.setDate(week.getDate() - 6);
     const total = since => this.store.usageTotal(since), first = this.store.usageFirst();
     const rows = this.store.usageByPurpose(week.toISOString());
+    // Readings by each Gemini speech model in Google's day, against their daily allowance.
+    const googleDay = pacificMidnight(now).toISOString();
     return { since: first, today: total(day.toISOString()), week: total(week.toISOString()), all: total(''),
-      week_by_purpose: rows.map(r => ({ ...r, label: PURPOSES[r.purpose] })) };
+      week_by_purpose: rows.map(r => ({ ...r, label: PURPOSES[r.purpose] })),
+      speech: { since: googleDay, by_model: this.store.usageByModel(googleDay, SPEECH).map(r => ({ model: r.model, calls: r.calls })) } };
   }
 }

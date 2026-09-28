@@ -42,12 +42,15 @@ test('the hint is spoken by Gemini and streamed through as raw audio, and the ca
 
 test('only a short hint in a known language is sent, and a refused call fails before any audio', async () => {
   const cfg = { geminiKey: 'k', geminiTtsModel: 'gemini-3.8-flash-tts', geminiTtsVoice: 'Kore' };
-  const speech = new Speech(cfg, async () => ({ ok: false, status: 429 }));
+  const models = [], speech = new Speech(cfg, async (url, options) => { models.push(JSON.parse(options.body).model); return { ok: false, status: 429 }; });
   await assert.rejects(speech.stream({ text: 'hi', language: 'fr-FR' }, {}, fakeRes()), /Invalid language/);
   await assert.rejects(speech.stream({ text: 'x'.repeat(401), language: 'en-US' }, {}, fakeRes()));
   const res = fakeRes();
-  await assert.rejects(speech.stream({ text: 'hi', language: 'en-US' }, {}, res), /HTTP 429/);
+  await assert.rejects(speech.stream({ text: 'hi', language: 'en-US' }, {}, res), e => e.status === 429 && /太频繁/.test(e.message));
   assert.equal(res.head, null);
+  assert.deepEqual(models, ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts'], 'both speech models were tried');
+  const other = new Speech({ ...cfg, geminiTtsModel: 'gemini-3.8-flash-preview-tts' }, async () => ({ ok: false, status: 500 }));
+  await assert.rejects(other.stream({ text: 'hi', language: 'en-US' }, {}, fakeRes()), e => e.status === 502 && /HTTP 500/.test(e.message));
   assert.equal(usageOf(null), null);
 });
 

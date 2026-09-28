@@ -68,11 +68,31 @@ const restFor = error => {
   return wait ? ((Number(wait[1] || 0) * 60 + Number(wait[2] || 0)) * 60 + Number(wait[3] || 0)) * 1000 : 60000;
 };
 
+// Each speech model has its own allowance (on Tier 1, 10 a minute and 100 a day each, seen 2026-09-27), so when
+// one is spent the other speaks: twice the readings a day before the page's own voice has to take over.
+const PAIR = { 'gemini-3.8-flash-lite-tts': 'gemini-3.8-flash-tts', 'gemini-3.8-flash-tts': 'gemini-3.8-flash-lite-tts' };
+export const speechModels = model => PAIR[model] ? [model, PAIR[model]] : [model];
+
 export class Speech {
   constructor(cfg, request = fetch) {
     // Called on its own: a browser's fetch refuses to run as a method of this object ("Illegal invocation").
     this.cfg = cfg; this.request = (...args) => request(...args);
     this.cache = cfg.ttsCache || (cfg.ttsCacheDir ? diskCache(cfg.ttsCacheDir) : null);
+    // A model refused for its allowance rests until it comes back; what a refusal said the daily limit is, is kept.
+    this.resting = new Map(); this.limits = new Map();
+  }
+  ready(model) { return !(this.resting.get(model)?.until > Date.now()); }
+  rest(model, failure) {
+    const perDay = /limit: (\d+) requests? per day/i.exec(String(failure?.message || ''))?.[1];
+    if (perDay) this.limits.set(model, Number(perDay));
+    this.resting.set(model, { until: Date.now() + restFor(failure) });
+  }
+  // Why no speech model can speak now, and when one can again.
+  spent(models) {
+    const left = Math.min(...models.map(m => this.resting.get(m)?.until ?? Infinity)) - Date.now();
+    if (left < 45 * 60000) return 'Gemini 朗读的请求太频繁，稍等一会儿再试。';
+    const limit = this.limits.get(models[0]);
+    return `Gemini 朗读今天的${limit ? ` ${limit} 次` : '次数'}用完了${models.length > 1 ? '（两个朗读模型都用完了）' : ''}，约 ${Math.max(1, Math.round(left / 3600000))} 小时后恢复。`;
   }
   // `res` is the local server's HTTP response, or anything with its writeHead, write, end and on('close').
   async stream(input, req, res) {
@@ -81,20 +101,37 @@ export class Speech {
     check(Object.hasOwn(STYLE, input.language), 'Invalid language');
     const kind = input.kind === undefined ? 'hint' : oneOf(input.kind, ['hint', 'explain']);
     const words = input.text.trim(), style = kind === 'explain' ? EXPLAIN_STYLE : STYLE[input.language];
-    const model = this.cfg.geminiTtsModel, voice = this.cfg.geminiTtsVoice;
-    const name = this.cache ? sha256(JSON.stringify([model, voice, style, words])) : null;
-    const pcm = name ? await this.cache.read(name) : null;
-    if (pcm) {
-      res.writeHead(200, { 'Content-Type': 'audio/l16; rate=24000; channels=1', 'X-Voice': voiceHeader(`${model} · ${voice} · 已存，不花钱`) });
-      res.end(pcm); return;
+    const models = speechModels(this.cfg.geminiTtsModel), voice = this.cfg.geminiTtsVoice;
+    const nameOf = model => this.cache ? sha256(JSON.stringify([model, voice, style, words])) : null;
+    // Said before, by either model: heard again for nothing.
+    for (const model of models) {
+      const name = nameOf(model), pcm = name ? await this.cache.read(name) : null;
+      if (pcm) {
+        res.writeHead(200, { 'Content-Type': 'audio/l16; rate=24000; channels=1', 'X-Voice': voiceHeader(`${model} · ${voice} · 已存，不花钱`) });
+        res.end(pcm); return;
+      }
     }
     check(this.cfg.geminiKey, '朗读用的是 Gemini，请在「设置」里填写 Gemini 的 API key，或者改用浏览器自带的朗读。', 503);
-    // Refused a moment ago: not asked again until the allowance is back, so the page's own voice takes over at once.
-    check(!this.resting || Date.now() >= this.resting.until, this.resting?.message, 429);
+    // A model refused a moment ago is not asked again until its allowance is back; with both resting, the page's own
+    // voice takes over at once.
+    const ready = models.filter(m => this.ready(m));
+    check(ready.length, this.spent(models), 429);
+    const page = { closed: false, abort: null };
+    res.on('close', () => { page.closed = true; page.abort?.abort(); });
+    let refused = null;
+    for (const model of ready) {
+      refused = await this.attempt(model, { voice, style, words, kind, name: nameOf(model) }, res, page);
+      if (!refused?.limited) break;
+    }
+    if (!refused || page.closed) return;
+    check(false, refused.limited && !models.some(m => this.ready(m)) ? this.spent(models) : refused.message, refused.status);
+  }
+  // One model's reading. Nothing comes back when it was said (or the page went away); a refusal before any sound
+  // comes back as { limited, message, status }.
+  async attempt(model, { voice, style, words, kind, name }, res, page) {
     // A newer hint, or the page going away, drops the request so no audio nobody hears is paid for.
     const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 20000);
-    let closed = false;
-    res.on('close', () => { closed = true; abort.abort(); });
+    page.abort = abort;
     let upstream;
     try {
       upstream = await this.request(ENDPOINT, { method: 'POST', redirect: 'error', signal: abort.signal,
@@ -103,8 +140,13 @@ export class Speech {
           input: [{ type: 'user_input', content: [{ type: 'text', text: words,
             annotations: [{ type: 'speech_metadata', style }] }] }],
           generation_config: { speech_config: [{ voice }] } }) });
-    } catch { clearTimeout(timeout); check(false, 'Gemini 朗读连接不上或超时。', 502); }
-    if (!upstream.ok) { clearTimeout(timeout); check(false, `Gemini 朗读没有接受请求（HTTP ${upstream.status}）。`, 502); }
+    } catch { clearTimeout(timeout); return page.closed ? null : { message: 'Gemini 朗读连接不上或超时。', status: 502 }; }
+    if (!upstream.ok) {
+      clearTimeout(timeout);
+      const limited = upstream.status === 429;
+      if (limited) this.rest(model, null);
+      return { limited, message: `Gemini 朗读没有接受请求（HTTP ${upstream.status}）。`, status: limited ? 429 : 502 };
+    }
     // The audio headers go out with the first sound: a refusal comes inside the stream, before any, and is then
     // answered as an error instead of as silence.
     let usage = null, buffer = '', started = false, failure = null;
@@ -143,11 +185,10 @@ export class Speech {
       }
       if (started) res.end();
     }
-    // Nothing was said and the page is still waiting: it is told why.
-    if (!started && !closed) {
-      const limited = failure?.code === 'rate_limit_exceeded', message = abort.signal.aborted && !failure ? 'Gemini 朗读等了 20 秒还没有声音。' : `${refusal(failure)}。`;
-      if (limited) this.resting = { until: Date.now() + restFor(failure), message };
-      check(false, message, limited ? 429 : 502);
-    }
+    if (started || page.closed) return null;
+    const limited = failure?.code === 'rate_limit_exceeded';
+    if (limited) this.rest(model, failure);
+    return { limited, status: limited ? 429 : 502,
+      message: abort.signal.aborted && !failure ? 'Gemini 朗读等了 20 秒还没有声音。' : `${refusal(failure)}。` };
   }
 }

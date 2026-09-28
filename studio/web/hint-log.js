@@ -4,7 +4,7 @@
 // An entry: { key, text, spoken, lang, tag?, note? } — `spoken` is what is read aloud and what the voice
 // reports back while reading it.
 export function createHintLog(list, { onPick = () => {} } = {}) {
-  let entries = [], reading = null;
+  let entries = [], reading = null, visible = true;
   function mark() {
     // The newest entry with the words being read is the one marked, should the same words come twice.
     const at = reading ? entries.findLastIndex(e => e.spoken === reading) : -1;
@@ -29,12 +29,14 @@ export function createHintLog(list, { onPick = () => {} } = {}) {
       if (grows) list.append(...next.slice(entries.length).map(itemOf));
       else list.replaceChildren(...next.map(itemOf));
       entries = next;
-      list.hidden = !entries.length;
+      list.hidden = !visible || !entries.length;
       mark();
       // The newest is always in view: the list scrolls down to it as it comes.
       list.scrollTo({ top: list.scrollHeight, behavior: grows ? 'smooth' : 'instant' });
     },
     reading(text) { reading = text || null; mark(); },
+    // Stepped aside while the writing is being checked or its correction is on screen.
+    shown(flag) { visible = flag; list.hidden = !visible || !entries.length; },
     clear() { entries = []; list.replaceChildren(); list.hidden = true; },
   };
 }

@@ -12,7 +12,7 @@ import { Voice } from '../server/voice.js';
 import { Usage } from '../server/usage.js';
 import { Quizzes } from '../server/quiz.js';
 import { Anki } from '../server/anki.js';
-import { Speech } from '../server/tts.js';
+import { Speech, speechModels } from '../server/tts.js';
 import { Explanations } from '../server/explain.js';
 import { config } from '../server/config.js';
 import { Settings, testServices } from '../server/settings.js';
@@ -24,6 +24,7 @@ import PROMPTS from '../prompts.js';
 import { BrowserStore } from './store.js';
 import { speechCache } from './speech-cache.js';
 import { rtcUpstream, qwenRtcCheck } from './rtc.js';
+import { dollars, badgeDollars, speechModelName, googleDayStart, speechCounts } from './usage-text.js';
 
 export const local = false;
 usePrompts(PROMPTS);
@@ -48,6 +49,33 @@ const writingHelp = new WritingHelp(sentence, cfg);
 const phrases = new Phrases(sentence, cfg);
 const quizzes = new Quizzes(sentence, cfg, phrases);
 const speech = new Speech(cfg);
+
+// The toolbar icon carries what today has cost; hovering it shows the day's calls and the Gemini speech models'
+// readings, so none of it needs the provider's console (asked for by the learner, 2026-09-27). It turns orange
+// when one speech model has spent its day's allowance and red when both have. Kept current as calls are made,
+// and every ten minutes while the panel is open, so a new day shows as one.
+let usageShown = null;
+function showUsage() {
+  clearTimeout(usageShown);
+  usageShown = setTimeout(() => {
+    try {
+      const u = cfg.usage.summary(), today = u.today, models = speechModels(cfg.geminiTtsModel), spent = models.filter(m => !speech.ready(m));
+      const lines = [chrome.i18n.getMessage('actionTitle'), `今天：调用 ${today.calls} 次，Gemini 约 ${dollars(today.usd)}`];
+      if (today.unpriced) lines.push(`其中 ${today.unpriced} 次是 DeepSeek 或千问，不估金额`);
+      const counts = speechCounts(u.speech);
+      if (counts || spent.length) lines.push(`Gemini 朗读（从 ${googleDayStart(u.speech.since)} 算起）：${counts || '还没有'}${spent.length ? `；${spent.map(speechModelName).join('、')} 今天的次数用完了` : ''}`);
+      lines.push(`近 7 天：Gemini 约 ${dollars(u.week.usd)}`);
+      chrome.action.setTitle({ title: lines.join('\n') });
+      chrome.action.setBadgeText({ text: today.calls ? badgeDollars(today.usd) : '' });
+      chrome.action.setBadgeBackgroundColor({ color: spent.length >= models.length ? '#b3261e' : spent.length ? '#b7791f' : '#315e48' });
+      chrome.action.setBadgeTextColor?.({ color: '#ffffff' });
+    } catch {}
+  }, 300);
+}
+const recordUsage = cfg.usage.record.bind(cfg.usage);
+cfg.usage.record = entry => { const kept = recordUsage(entry); showUsage(); return kept; };
+showUsage();
+setInterval(showUsage, 10 * 60 * 1000);
 const explanations = new Explanations(sentence, cfg);
 // Gemini Live takes its key in the address, so a plain socket reaches it; Qwen goes over WebRTC.
 let opened = null;
@@ -135,6 +163,7 @@ export function speak(path, init = {}) {
       try { controller.error(new DOMException('Aborted', 'AbortError')); } catch {}
     });
     speech.stream(input, {}, res).catch(e => {
+      showUsage();
       if (!answered) resolve(Response.json({ error: e instanceof HttpError ? e.message : '朗读出错了。' }, { status: e.status || 500 }));
       else try { controller.error(e); } catch {}
     });

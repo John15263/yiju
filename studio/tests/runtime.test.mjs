@@ -221,12 +221,14 @@ test('provider HTTP contract and timeout are exercised with a local mock server'
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   t.after(() => { server.closeAllConnections(); return new Promise(r => server.close(r)); });
   const endpoint = `http://127.0.0.1:${server.address().port}`;
-  const cfg = { ...config({}), endpoint, key: 'fake-test-key', timeout: 100 };
+  // Only the call that is meant to time out gets a short wait; under a busy test run 100 ms was not always
+  // enough for the calls that should succeed.
+  const cfg = { ...config({}), endpoint, key: 'fake-test-key', timeout: 5000 };
   const packet = { session_revision: 3, recent_input: 'local mock only' }, spec = decisionSpec(pack, 'ja');
   assert.equal((await callJev(packet, spec, cfg)).answers.next_cue.choice, 'show_sleep');
   assert.deepEqual(received.body.state, packet); assert.equal(received.body.model, 'jev-latest');
   assert.deepEqual(received.body.questions.next_cue, spec.question); assert.equal(received.headers.authorization, 'Bearer fake-test-key');
-  await assert.rejects(callJev(packet, spec, { ...cfg, endpoint: endpoint + '/timeout' }), /network error or timeout/);
+  await assert.rejects(callJev(packet, spec, { ...cfg, endpoint: endpoint + '/timeout', timeout: 100 }), /network error or timeout/);
   await assert.rejects(callJev(packet, spec, { ...cfg, endpoint: endpoint + '/rate-limit' }), /^Error: Jev HTTP 429$/);
 });
 test('SSE initial connection and reconnect return full current state', async t => {

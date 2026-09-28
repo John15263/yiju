@@ -5,7 +5,7 @@ import { voiceProvider } from './voice-providers.mjs';
 // kept is up to the runner — studio/data/settings.json (owner-only) for the local server, the browser's own storage
 // for the extension — and it takes precedence over .env, so a key typed into the page wins over a file.
 const KEYS = ['GEMINI_API_KEY', 'DEEPSEEK_API_KEY', 'DASHSCOPE_API_KEY'];
-const CHOICES = { TEXT_PROVIDER: ['gemini', 'deepseek', 'qwen'], VOICE_PROVIDER: ['gemini', 'qwen', 'none'], SPEECH_PROVIDER: ['gemini', 'browser'],
+const CHOICES = { TEXT_PROVIDER: ['gemini', 'deepseek', 'qwen'], VOICE_PROVIDER: ['gemini', 'qwen', 'none'], SPEECH_PROVIDER: ['mixed', 'gemini', 'browser'],
   DASHSCOPE_REGION: ['cn-beijing', 'ap-southeast-1'], ANKI_PUSH: ['on', 'off'] };
 const NAMES = [...KEYS, ...Object.keys(CHOICES), 'DASHSCOPE_WORKSPACE_ID', 'ANKI_CONNECT_URL'];
 
@@ -93,6 +93,7 @@ export async function testServices(cfg, { request = fetch, connect = (url, optio
   });
   // The browser's own voices need nothing; Gemini's speech takes the Gemini key.
   const speech = cfg.speechProvider === 'browser' ? { ok: true, message: '用浏览器自带的朗读' } : { ...(await gemini()) };
+  if (cfg.speechProvider === 'mixed' && speech.ok) speech.message = '讲解用 Gemini，提示用浏览器自带的声音';
   // Anki only when cards are to go there; the learner may be asked, in Anki, to let this page send them.
   const anki = cfg.ankiPush && cfg.anki ? await cfg.anki.permission() : null;
   return { text, voice, speech, ...(anki && { anki }) };

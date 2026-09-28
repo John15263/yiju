@@ -225,6 +225,7 @@
         <section id="usage-panel" aria-label="模型花费">
           <p class="label">模型花费</p>
           <p id="usage-totals" class="footnote">正在读取…</p>
+          <p id="usage-speech" class="footnote" hidden></p>
           <p class="footnote">近 7 天，按用途：</p>
           <ul id="usage-breakdown"></ul>
           <p class="footnote">按服务商每次返回的实际用量和官方价格计算，含思考 token，没有扣除缓存折扣；这里不知道价格的服务只记用量、不估金额。账单以服务商的控制台为准。</p>
@@ -257,8 +258,9 @@
 
       <h3>朗读 <span class="muted">提示和讲解稿</span></h3>
       <div class="choice">
-        <label><input type="radio" name="SPEECH_PROVIDER" value="gemini"> Gemini 朗读（自然，每条约 $0.0015）</label>
-        <label><input type="radio" name="SPEECH_PROVIDER" value="browser"> 浏览器自带（不花钱）</label>
+        <label><input type="radio" name="SPEECH_PROVIDER" value="mixed"> 讲解用 Gemini，提示用浏览器自带（推荐，省下 Gemini 每天的朗读次数）</label>
+        <label><input type="radio" name="SPEECH_PROVIDER" value="gemini"> 都用 Gemini 朗读（最自然，每条约 $0.0015）</label>
+        <label><input type="radio" name="SPEECH_PROVIDER" value="browser"> 都用浏览器自带（不花钱）</label>
       </div>
 
       <div class="field" data-need="gemini">

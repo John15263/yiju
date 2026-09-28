@@ -95,9 +95,13 @@ export class Store {
       .run(r.at, r.purpose, r.model, r.round_id, r.text_in, r.audio_in, r.text_out, r.audio_out, r.thoughts, r.usd);
   }
   usageTotal(since) {
-    return this.db.prepare('SELECT COUNT(*) AS calls, COALESCE(SUM(usd),0) AS usd FROM usage_log WHERE at >= ?').get(since);
+    return this.db.prepare('SELECT COUNT(*) AS calls, COALESCE(SUM(usd),0) AS usd, COALESCE(SUM(usd IS NULL),0) AS unpriced FROM usage_log WHERE at >= ?').get(since);
   }
   usageFirst() { return this.db.prepare('SELECT MIN(at) AS at FROM usage_log').get().at; }
+  usageByModel(since, purposes) {
+    return this.db.prepare(`SELECT model, COUNT(*) AS calls FROM usage_log WHERE at >= ? AND purpose IN (${purposes.map(() => '?').join(',')})
+      GROUP BY model ORDER BY calls DESC`).all(since, ...purposes);
+  }
   usageByPurpose(since) {
     return this.db.prepare(`SELECT purpose, COUNT(*) AS calls, COALESCE(SUM(usd),0) AS usd, SUM(usd IS NULL) AS unpriced,
       SUM(text_in) AS text_in, SUM(audio_in) AS audio_in, SUM(text_out) AS text_out, SUM(audio_out) AS audio_out, SUM(thoughts) AS thoughts

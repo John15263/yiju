@@ -63,8 +63,10 @@ export function config(env = process.env) {
   if (!['127.0.0.1', 'localhost'].includes(ankiHost)) throw new Error('ANKI_CONNECT_URL must point at this machine');
   const ankiDeck = env.ANKI_DECK?.trim() || '一句::改错';
   // Hints and explanations read aloud: by Gemini's speech models, or by the browser's own voices, which cost
-  // nothing and need no key but sound flatter (Chrome's once went silent without saying why, 2026-09-24).
-  const speechProvider = choice('SPEECH_PROVIDER', ['gemini', 'browser'], geminiKey ? 'gemini' : 'browser');
+  // nothing and need no key but sound flatter (Chrome's once went silent without saying why, 2026-09-24). 'mixed',
+  // the default with a Gemini key, has Gemini read the explanations and the browser the many short hints: each
+  // speech model allows only 100 readings a day on Tier 1, and hints alone used them up (2026-09-27).
+  const speechProvider = choice('SPEECH_PROVIDER', ['mixed', 'gemini', 'browser'], geminiKey ? 'mixed' : 'browser');
   // Flash-Lite TTS is a third cheaper than Flash TTS ($6 against $9 per million audio tokens, 2026 prices) and
   // plenty clear for this, so it is the default (2026-09-24).
   const geminiTtsModel = env.GEMINI_TTS_MODEL?.trim() || 'gemini-3.8-flash-lite-tts';

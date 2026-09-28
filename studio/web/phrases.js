@@ -159,6 +159,9 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
     // opens are not.
     const hints = chunkHints(r);
     log.render(hints);
+    // Once this text is sent to be checked, writing is over for it: the hints step aside for the check and its
+    // correction, and come back as soon as the text is changed (asked for by the learner, 2026-09-27).
+    log.shown(!(saved.result?.text != null && saved.result.text.trim() === input.value.trim()));
     if (heardUpTo === null) heardUpTo = hints.length;
     else if (hints.length > heardUpTo) { heardUpTo = hints.length; speak(hints.at(-1).spoken, r.language); }
     const confirming = settled(saved);

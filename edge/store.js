@@ -36,7 +36,12 @@ export class BrowserStore {
   }
   usageTotal(since) {
     const rows = this.usage.filter(r => r.at >= since);
-    return { calls: rows.length, usd: rows.reduce((n, r) => n + (r.usd || 0), 0) };
+    return { calls: rows.length, usd: rows.reduce((n, r) => n + (r.usd || 0), 0), unpriced: rows.filter(r => r.usd === null).length };
+  }
+  usageByModel(since, purposes) {
+    const calls = new Map();
+    for (const r of this.usage) if (r.at >= since && purposes.includes(r.purpose)) calls.set(r.model, (calls.get(r.model) || 0) + 1);
+    return [...calls].map(([model, n]) => ({ model, calls: n })).sort((a, b) => b.calls - a.calls);
   }
   usageFirst() { return this.usage.reduce((first, r) => (!first || r.at < first ? r.at : first), null); }
   usageByPurpose(since) {
