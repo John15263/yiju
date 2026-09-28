@@ -129,8 +129,13 @@ export class Speech {
   // One model's reading. Nothing comes back when it was said (or the page went away); a refusal before any sound
   // comes back as { limited, message, status }.
   async attempt(model, { voice, style, words, kind, name }, res, page) {
-    // A newer hint, or the page going away, drops the request so no audio nobody hears is paid for.
-    const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 20000);
+    // A newer hint, or the page going away, drops the request so no audio nobody hears is paid for. The first sound
+    // comes in about a second; with none after 8 s the request is given up, so the browser's voice takes over
+    // instead of the learner waiting on (a burst of requests once hung 20 s, 2026-09-28). Once it speaks it may
+    // take its time: Flash TTS once streamed 3 s of speech over 16 s, so the whole reading gets 45 s.
+    const abort = new AbortController(), timeout = setTimeout(() => abort.abort(), 45000);
+    let started = false;
+    const silent = setTimeout(() => { if (!started) abort.abort(); }, 8000);
     page.abort = abort;
     let upstream;
     try {
@@ -140,16 +145,16 @@ export class Speech {
           input: [{ type: 'user_input', content: [{ type: 'text', text: words,
             annotations: [{ type: 'speech_metadata', style }] }] }],
           generation_config: { speech_config: [{ voice }] } }) });
-    } catch { clearTimeout(timeout); return page.closed ? null : { message: 'Gemini 朗读连接不上或超时。', status: 502 }; }
+    } catch { clearTimeout(timeout); clearTimeout(silent); return page.closed ? null : { message: 'Gemini 朗读连接不上或超时。', status: 502 }; }
     if (!upstream.ok) {
-      clearTimeout(timeout);
+      clearTimeout(timeout); clearTimeout(silent);
       const limited = upstream.status === 429;
       if (limited) this.rest(model, null);
       return { limited, message: `Gemini 朗读没有接受请求（HTTP ${upstream.status}）。`, status: limited ? 429 : 502 };
     }
     // The audio headers go out with the first sound: a refusal comes inside the stream, before any, and is then
     // answered as an error instead of as silence.
-    let usage = null, buffer = '', started = false, failure = null;
+    let usage = null, buffer = '', failure = null;
     const kept = [];
     const handle = block => {
       const line = block.split('\n').find(l => l.startsWith('data:'));
@@ -176,7 +181,7 @@ export class Speech {
       if (buffer.trim()) handle(buffer);
     } catch {}
     finally {
-      clearTimeout(timeout);
+      clearTimeout(timeout); clearTimeout(silent);
       // Billed whether or not it was heard to the end.
       if (usage) this.cfg.usage?.record({ purpose: kind === 'explain' ? 'explain_speech' : 'hint_speech', model, usage: usageOf(usage) });
       // Only a reading that came through whole is kept.
@@ -189,6 +194,6 @@ export class Speech {
     const limited = failure?.code === 'rate_limit_exceeded';
     if (limited) this.rest(model, failure);
     return { limited, status: limited ? 429 : 502,
-      message: abort.signal.aborted && !failure ? 'Gemini 朗读等了 20 秒还没有声音。' : `${refusal(failure)}。` };
+      message: abort.signal.aborted && !failure ? 'Gemini 朗读等了好几秒还没有声音。' : `${refusal(failure)}。` };
   }
 }
