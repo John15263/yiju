@@ -1,16 +1,36 @@
 import { check, fields, text } from './validation.mjs';
 
 // Keep nested provider schemas simple; counts and exact coverage are checked below.
+// axis is the part of a chunk that has essentially one natural wording ("be worn down by ＋某事"), kept for
+// practising it again in another setting; empty when the chunk can be said many ways.
 export const phraseSchema = { type: 'array', items: { type: 'object',
-  properties: { meaning: { type: 'string' }, reference: { type: 'string' }, hints: { type: 'array', items: { type: 'string' } } },
-  required: ['meaning', 'reference', 'hints'], additionalProperties: false } };
+  properties: { meaning: { type: 'string' }, reference: { type: 'string' }, hints: { type: 'array', items: { type: 'string' } },
+    axis: { type: 'string' }, axis_meaning: { type: 'string' } },
+  required: ['meaning', 'reference', 'hints', 'axis', 'axis_meaning'], additionalProperties: false } };
+const words = (value, language) => [...new Intl.Segmenter(language, { granularity: 'word' }).segment(value.normalize('NFKC').toLowerCase())]
+  .filter(part => part.isWordLike && part.segment.length > 1).map(part => part.segment);
+// Worn and wearing both come from wear; a word counts as there when one begins with the other.
+const alike = (a, b) => a === b || (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a)));
+// An axis is only kept when some word of it is really in its chunk: one the model made up, or took from
+// another chunk, would send the practice somewhere the learner never went. A missing or doubtful axis is
+// dropped rather than holding up the chunks (a provider without a strict schema may leave it out).
+export function axisOf(item) {
+  const axis = typeof item.axis === 'string' ? item.axis.trim().slice(0, 120) : '';
+  const meaning = typeof item.axis_meaning === 'string' ? item.axis_meaning.trim().slice(0, 120) : '';
+  if (!axis || !meaning) return { axis: '', axis_meaning: '' };
+  const language = /[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(item.reference) ? 'ja' : 'en';
+  const said = words(item.reference, language);
+  const found = words(axis, language).some(word => said.some(w => alike(w, word)));
+  return found ? { axis, axis_meaning: meaning } : { axis: '', axis_meaning: '' };
+}
 export function validatePhrases(items, reference) {
   check(Array.isArray(items) && items.length >= 1 && items.length <= 8, 'Supply 1–8 meaning chunks');
   for (const item of items) {
-    fields(item, ['meaning', 'reference', 'hints'], ['meaning', 'reference', 'hints']);
+    fields(item, ['meaning', 'reference', 'hints', 'axis', 'axis_meaning'], ['meaning', 'reference', 'hints']);
     text(item.meaning, 600); text(item.reference, 800);
     check(Array.isArray(item.hints) && item.hints.length === 2, 'Supply structure and initial hints');
     item.hints.forEach(h => text(h, 500));
+    Object.assign(item, axisOf(item));
   }
   const compact = s => s.normalize('NFKC').replace(/\s+/gu, '');
   const whole = list => compact(list.map(p => p.reference).join('')) === compact(reference);

@@ -36,7 +36,7 @@ export class SentenceBoard {
     return { revision: s.revision, active,
       completion: completed ? { ...s.completion, unit_index: completed.unit.index, text: attempt?.text || '',
         feedback: completed.feedback.findLast(f => f.attempt_id === attempt?.id) || null } : null,
-      collection: collection ? { id: collection.id, outline: collection.outline, units, active_index: active.unit.index } : null,
+      collection: collection ? { id: collection.id, outline: collection.outline, units, active_index: active.unit.index, transfer: collection.transfer || null } : null,
       history: s.rounds.map(r => ({ id: r.id, meaning: r.meaning, language: r.language, origin: r.origin, stage: r.stage,
         ...(r.unit ? { collection_id: r.collection_id, unit_index: r.unit.index } : {}) })),
       preparation: s.preparation || null, client_view: s.client_view, updated_at: s.updated_at || null };
@@ -44,7 +44,13 @@ export class SentenceBoard {
   get() { return this.public(this.read()); }
   // Finish and select the next unit in the same saved revision; never reset its existing work.
   finishRound(s, r, reason) {
-    check(s.active_id === r.id && r.stage === 'review', '先完成一次表达和反馈。', 409);
+    check(s.active_id === r.id && ['review', 'transfer'].includes(r.stage), '先完成一次表达和反馈。', 409);
+    // A question in another setting, written for this sentence while it was practised, comes before moving on.
+    if (r.stage === 'review' && r.transfer?.status === 'ready') {
+      r.stage = 'transfer'; r.transfer.reason = reason;
+      r.support_events.push({ kind: 'transfer_start', detail: { transfer_id: r.transfer.id }, level: 0, at: now(), revision: s.revision + 1 });
+      return;
+    }
     r.stage = 'complete';
     const collection = s.collections?.find(c => c.id === r.collection_id);
     const index = collection?.round_ids.indexOf(r.id) ?? -1;

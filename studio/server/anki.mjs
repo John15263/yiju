@@ -18,6 +18,14 @@ export function clozeCard(quiz, r) {
   return { text, extra, tags: ['一句', r.language === 'ja' ? '日语' : '英语', quiz.kind === 'chunk' ? '短语' : '整句'], round_id: r.id, quiz_id: quiz.id };
 }
 
+// A 换个场合 question becomes a card too: the new setting in Chinese in front, the sentence to type from memory.
+export function transferCard(item, r) {
+  const extra = [`练的说法：${escape(item.axis)}（${escape(item.axis_meaning)}）`, `原来那一块：${escape(item.chunk_reference)}（${escape(item.chunk_meaning)}）`,
+    ...(item.inputs.length ? [`当时写的：${escape(item.inputs.at(-1))}`] : [])].join('<br>');
+  return { text: `${escape(item.prompt)}<br>{{c1::${escape(item.example)}}}`, extra,
+    tags: ['一句', r.language === 'ja' ? '日语' : '英语', '换个场合'], round_id: r.id, quiz_id: item.id };
+}
+
 const DENIED = 'Anki 还没允许一句推送卡片：在「服务与 key」里点「保存并测试」，再在 Anki 弹出的窗口里点「是」';
 
 export class Anki {

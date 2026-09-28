@@ -74,7 +74,7 @@ summary{cursor:pointer;font-size:13px;color:var(--muted);padding:14px 0}
 #desk-context h1,#desk-context h2{font-weight:450;font-size:clamp(18px,2.1vw,20px);line-height:1.75;margin:0 0 22px;overflow-wrap:anywhere}
 #context-open{min-height:0;padding:6px 0;margin:-14px 0 20px;font-size:13px;text-decoration:underline;text-underline-offset:4px}
 #phrase-region,#writing-region,#study-region,#response{border-top:1px solid var(--line);padding-top:22px}
-#phrase-text,#writing-text{font-size:23px;line-height:1.65;min-height:112px;margin:0 0 16px;padding:16px 16px 18px}
+#phrase-text,#writing-text,#transfer-text{font-size:23px;line-height:1.65;min-height:112px;margin:0 0 16px;padding:16px 16px 18px}
 #phrase-text{min-height:96px}
 .desk-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .desk-helper{min-height:26px;margin:18px 0 0}
@@ -88,6 +88,7 @@ summary{cursor:pointer;font-size:13px;color:var(--muted);padding:14px 0}
 #chunk-note p{margin:0}
 /* 改错小测：空格就在句子里。 */
 #quiz-region{padding:4px 0 8px}
+#transfer-result{margin:14px 0 0}#transfer-example{font-size:18px;line-height:1.75;margin:0 0 8px;overflow-wrap:anywhere}#transfer-axis{margin:0}
 #quiz-meaning{font-size:15px;margin:0 0 8px}
 #quiz-line{font-size:20px;line-height:2.5;overflow-wrap:anywhere;white-space:pre-wrap}
 .quiz-blank{display:inline-flex;align-items:baseline;gap:6px;margin:0 2px}
@@ -214,7 +215,7 @@ body.has-drawer{padding-right:var(--drawer)}
   header{padding:0 22px;height:64px;gap:10px}
   main{padding:0 22px 48px}
   #desk-context{min-height:0}
-  #phrase-text,#writing-text{font-size:20px;min-height:104px}
+  #phrase-text,#writing-text,#transfer-text{font-size:20px;min-height:104px}
   #desk-foot{gap:8px}
   #desk-foot #pause{margin-left:0}
   .expression-outline{grid-template-columns:1fr}

@@ -106,13 +106,25 @@ export function deskView({ state, settings = null } = {}) {
       view.primary = { id: 'complete', label: `${lastUnit ? '完成本句' : '完成并进入下一句'} · ⌘ ↵` };
       view.weak = [weak('practice', '继续修改'), weak('voice-open', null)];
       break;
-    case 'complete':
+    case 'transfer':
+    case 'complete': {
+      // A question in another setting: the sentence's own before it moves on, the passage's once all are done.
+      const transfer = openTransfer(r, collection?.transfer, finished);
+      if (transfer) {
+        const item = transfer.items[transfer.index], count = transfer.items.length;
+        view.context = { source: 'transfer', heading: item.prompt,
+          eyebrow: transfer.round === 1 ? '换个场合 · 用刚才的说法说出来' : `整段回顾 · 换个场合 ${transfer.index + 1} / ${count}` };
+        view.input = 'transfer';
+        break;
+      }
+      if (r.stage === 'transfer') break;
       view.context.eyebrow = finished ? '' : '这一句已完成';
       view.context.heading = finished ? '这段写完了' : r.meaning;
       view.input = 'response';
       view.primary = finished ? { id: 'finish-new', label: '新的想法' } : { id: 'start-phrases', label: '再练短语' };
       view.weak = [weak('repeat', '清空重练一轮')];
       break;
+    }
     case 'paused':
       view.context.eyebrow = '停在这里了';
       view.note = '草稿和位置都已保存。';
@@ -235,5 +247,13 @@ export function openQuiz(r) {
   if (r?.stage === 'phrases' && r.phrases?.step === 'quiz') return r.phrases.inputs[r.phrases.index]?.quiz || null;
   const attempt = r?.attempts?.at(-1);
   if (r?.stage === 'review' && r.quiz && r.quiz.attempt_id === attempt?.id) return r.quiz;
+  return null;
+}
+
+// The 换个场合 question waiting on the learner, if any: the sentence's own while it stands between the sentence
+// and the next one, or the passage's second round once every sentence is done.
+export function openTransfer(r, passage, finished) {
+  if (r?.stage === 'transfer' && r.transfer?.status === 'ready') return r.transfer;
+  if (r?.stage === 'complete' && finished && passage?.status === 'ready') return passage;
   return null;
 }

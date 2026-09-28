@@ -15,6 +15,7 @@ import { Phrases } from './phrases.mjs';
 import { Voice } from './voice.mjs';
 import { Usage } from './usage.mjs';
 import { Quizzes } from './quiz.mjs';
+import { Transfers, callTransferMake, callTransferCheck } from './transfer.mjs';
 import { Anki } from './anki.mjs';
 import { Speech } from './tts.mjs';
 import { Explanations } from './explain.mjs';
@@ -24,7 +25,7 @@ import { Settings, testServices } from './settings.mjs';
 import { textConfigured } from './llm.mjs';
 import { appConfig } from './app-config.mjs';
 
-export function createServer({ store, pack, cfg, settings = new Settings(), env = process.env, connect, webRoot, token = randomBytes(32).toString('hex'), infer, clozeInfer, reviewInfer, preparationInfer, writingHelpInfer, phrasePreparationInfer, phraseInfer }) {
+export function createServer({ store, pack, cfg, settings = new Settings(), env = process.env, connect, webRoot, token = randomBytes(32).toString('hex'), infer, clozeInfer, reviewInfer, preparationInfer, writingHelpInfer, phrasePreparationInfer, phraseInfer, transferMake = callTransferMake, transferCheck = callTransferCheck }) {
   const streams = new Map();
   // Every model call below meters itself through cfg.usage. Every part shares this one cfg, so a change made on
   // the settings page reaches all of them at once.
@@ -51,6 +52,10 @@ export function createServer({ store, pack, cfg, settings = new Settings(), env 
     ['/voice-mode.js', ['voice-mode.js', 'text/javascript; charset=utf-8']],
     ['/correction.js', ['correction.js', 'text/javascript; charset=utf-8']],
     ['/quiz.js', ['quiz.js', 'text/javascript; charset=utf-8']],
+    ['/transfer.js', ['transfer.js', 'text/javascript; charset=utf-8']],
+    ['/hint-log.js', ['hint-log.js', 'text/javascript; charset=utf-8']],
+    ['/foreign.js', ['foreign.js', 'text/javascript; charset=utf-8']],
+    ['/usage-text.js', ['usage-text.js', 'text/javascript; charset=utf-8']],
     ['/explain.js', ['explain.js', 'text/javascript; charset=utf-8']],
     ['/voice-worklet.js', ['voice-worklet.js', 'text/javascript; charset=utf-8']],
     ['/compose.js', ['compose.js', 'text/javascript; charset=utf-8']],
@@ -69,6 +74,7 @@ export function createServer({ store, pack, cfg, settings = new Settings(), env 
   const phrases = new Phrases(sentence, cfg, phrasePreparationInfer, phraseInfer);
   const voice = new Voice(sentence, cfg, connect);
   const quizzes = new Quizzes(sentence, cfg, phrases);
+  const transfers = new Transfers(sentence, cfg, transferMake, transferCheck);
   const speech = new Speech(cfg);
   const explanations = new Explanations(sentence, cfg);
   // The sentence board makes the sentence's fill-in check when feedback is done, and files its card too.
@@ -96,7 +102,7 @@ export function createServer({ store, pack, cfg, settings = new Settings(), env 
       if (req.headers.origin) check(req.headers.origin === origin, 'Cross-origin request denied', 403);
       check(!['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']), 'Cross-site request denied', 403);
       const url = new URL(req.url, origin), path = url.pathname;
-      if (req.method === 'GET' && path === '/api/health') return json(res, { service: 'generative-studio', version: '0.4.5' });
+      if (req.method === 'GET' && path === '/api/health') return json(res, { service: 'generative-studio', version: '0.4.6' });
       if (req.method === 'GET' && files.has(path)) {
         const [file, mime] = files.get(path);
         if (path === '/' || path === '/legacy') res.setHeader('Set-Cookie', `studio_auth=${token}; HttpOnly; SameSite=Strict; Path=/`);
@@ -163,6 +169,11 @@ export function createServer({ store, pack, cfg, settings = new Settings(), env 
         check(['answer', 'continue'].includes(action), 'Not found', 404);
         return json(res, await quizzes[action](await body(req)));
       }
+      if (req.method === 'POST' && path.startsWith('/api/sentence/transfer/')) {
+        const action = path.slice('/api/sentence/transfer/'.length);
+        check(['answer', 'help', 'continue', 'skip'].includes(action), 'Not found', 404);
+        return json(res, await transfers[action](await body(req)));
+      }
       if (req.method === 'GET' && path === '/api/packs') return json(res, [pack]);
       if (path === '/api/sessions') {
         if (req.method === 'GET') return json(res, store.list());
@@ -225,6 +236,6 @@ export function createServer({ store, pack, cfg, settings = new Settings(), env 
   });
   server.requestTimeout = 20000;
   server.headersTimeout = 10000;
-  return { server, runtime, decisions, sentence, cloze, reviews, preparations, freewrites, phrases, voice, usage, anki, quizzes, token,
+  return { server, runtime, decisions, sentence, cloze, reviews, preparations, freewrites, phrases, voice, usage, anki, quizzes, transfers, token,
     closeStreams: () => { for (const set of streams.values()) for (const res of set) res.end(); for (const conn of sockets) conn.close(1001, 'Server stopping'); } };
 }

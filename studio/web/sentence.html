@@ -110,6 +110,23 @@
             <p id="quiz-status" class="footnote" role="status"></p>
           </section>
 
+          <section id="transfer-region" aria-label="换个场合" hidden>
+            <label for="transfer-text" class="visually-hidden">用外语说出上面这句话</label>
+            <textarea id="transfer-text" rows="2" maxlength="800" spellcheck="false"></textarea>
+            <div class="desk-actions">
+              <button id="transfer-submit" class="primary" aria-keyshortcuts="Meta+Enter Control+Enter">检查 · ⌘ ↵</button>
+              <button id="transfer-help" aria-keyshortcuts="Meta+[" title="⌘ [：再给一条提示">提示 · ⌘ [</button>
+              <button id="transfer-skip" class="quiet">跳过</button>
+            </div>
+            <div class="desk-helper"><p id="transfer-note" role="status"></p><ol id="transfer-hints" class="hint-log" aria-live="polite" aria-label="这道题的提示" hidden></ol></div>
+            <div id="transfer-result" hidden>
+              <div id="transfer-marking" class="correction"></div>
+              <p class="chunk-note-label">参考说法</p><p id="transfer-example"></p>
+              <p id="transfer-axis" class="footnote"></p>
+            </div>
+            <p id="transfer-status" class="footnote" role="status"></p>
+          </section>
+
           <section id="study-region" aria-label="这一句的示范" hidden>
             <div class="prompt" id="study-prompt"><p id="study-label" class="label">一种自然的表达 · AI 参考</p><div id="study-text"></div></div>
             <details id="explanation-panel"><summary>理解这句话</summary><p id="explanation"></p><p class="footnote">还有不懂的地方，逐块学习时按 ⌘ ] 问语音陪练。</p></details>

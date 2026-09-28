@@ -13,7 +13,7 @@ const PRICES = [
 export const PURPOSES = {
   prepare: '材料整理', phrase_split: '旧句拆解', phrase_check: '短语检查', phrase_hint: '短语提示（按键）',
   phrase_hint_auto: '短语提示（停顿自动）', phrase_order: '中文语序', writing_help: '整句写作提示', review: '整句点评',
-  quiz_check: '改错小测判定', hint_speech: '提示朗读', explain_learn: '讲解稿（学习）', explain_fix: '讲解稿（批改）', explain_speech: '讲解朗读', voice_learn: '语音讲解', voice_fix: '批改讲解', voice_write: '语音陪练（试写）',
+  quiz_check: '改错小测判定', transfer_make: '换个场合出题', transfer_check: '换个场合判定', hint_speech: '提示朗读', explain_learn: '讲解稿（学习）', explain_fix: '讲解稿（批改）', explain_speech: '讲解朗读', voice_learn: '语音讲解', voice_fix: '批改讲解', voice_write: '语音陪练（试写）',
 };
 
 // Google counts a day's requests, and so the speech models' daily allowance, from midnight Pacific time.

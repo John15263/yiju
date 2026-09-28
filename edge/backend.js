@@ -11,6 +11,7 @@ import { Phrases } from '../server/phrases.js';
 import { Voice } from '../server/voice.js';
 import { Usage } from '../server/usage.js';
 import { Quizzes } from '../server/quiz.js';
+import { Transfers } from '../server/transfer.js';
 import { Anki } from '../server/anki.js';
 import { Speech, speechModels } from '../server/tts.js';
 import { Explanations } from '../server/explain.js';
@@ -48,6 +49,7 @@ const freewrites = new Freewrites(store);
 const writingHelp = new WritingHelp(sentence, cfg);
 const phrases = new Phrases(sentence, cfg);
 const quizzes = new Quizzes(sentence, cfg, phrases);
+const transfers = new Transfers(sentence, cfg);
 const speech = new Speech(cfg);
 
 // The toolbar icon carries what today has cost; hovering it shows the day's calls and the Gemini speech models'
@@ -86,6 +88,7 @@ const ACTIONS = {
   phrases: [phrases, ['ensure', 'hint', 'check', 'continue', 'next', 'order', 'write']],
   cloze: [cloze, ['input', 'check', 'hint', 'focus']],
   quiz: [quizzes, ['answer', 'continue']],
+  transfer: [transfers, ['answer', 'help', 'continue', 'skip']],
 };
 async function route(path, body) {
   const get = body === undefined;
@@ -106,7 +109,7 @@ async function route(path, body) {
   if (path === '/api/sentence/writing-help/seen') return writingHelp.seen(body);
   if (path === '/api/sentence/view-ack') return sentence.ack(body);
   if (path === '/api/sentence/explain') return explanations.request(body);
-  const action = path.match(/^\/api\/sentence\/(phrases|cloze|quiz)\/([a-z]+)$/);
+  const action = path.match(/^\/api\/sentence\/(phrases|cloze|quiz|transfer)\/([a-z]+)$/);
   if (action && !get) {
     const [module, allowed] = ACTIONS[action[1]];
     if (!allowed.includes(action[2])) throw new HttpError(404, 'Not found');

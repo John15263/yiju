@@ -8,6 +8,7 @@ import { createVoiceUI } from './voice.js';
 import { createSpeech } from './speech.js';
 import { renderCorrection } from './correction.js';
 import { createQuizUI } from './quiz.js';
+import { createTransferUI } from './transfer.js';
 import { createExplainUI } from './explain.js';
 import { voiceMode, chunkComparison, loose } from './voice-mode.js';
 import { deskView, markup, openQuiz, supportSummary, SUPPORT_LEVELS } from './view.js';
@@ -18,7 +19,7 @@ const $ = id => document.getElementById(id);
 let state = null, busy = false, reviewBusy = false, settings = null, writingKey = null, drawer = null;
 // The moment that starts a call by itself (a chunk to study, a correction to explain) at the last render;
 // undefined until the first state, so a reload never starts a call.
-const stages = { study: '理解', phrases: '短语学习与试写', cloze: '旧版填空', practice: '整句试写', awaiting_feedback: '等待反馈', review: '反馈', complete: '本轮完成', paused: '已暂停' };
+const stages = { study: '理解', phrases: '短语学习与试写', cloze: '旧版填空', practice: '整句试写', awaiting_feedback: '等待反馈', review: '反馈', transfer: '换个场合', complete: '本轮完成', paused: '已暂停' };
 const panels = { chapter: '这段表达', completion: '上一句', voice: '语音陪练', feedback: '完整点评', records: '练习记录与设置' };
 const footButtons = ['phrase-write', 'start-phrases', 'practice', 'complete', 'gemini-review', 'resume', 'repeat', 'finish-new', 'phrase-retry', 'start-cloze', 'voice-open'];
 const show = (id, visible) => { $(id).hidden = !visible; };
@@ -280,6 +281,7 @@ function render(next) {
 
   writingHelpUI.update(composing || freewriting ? null : r, busy);
   quizUI.update(composing || freewriting || !onDesk ? null : r);
+  transferUI.update(composing || freewriting || !onDesk ? null : state);
   voiceUI.update(composing || freewriting ? null : r);
   // Arriving at a chunk's study, at a correction, or at the sentence's feedback reads its explanation;
   // the live tutor is only ever opened by hand now, to ask about it.
@@ -302,6 +304,7 @@ const freewriteUI = createFreewriteUI({ api, onChange: () => render(state), onUs
 const writingHelpUI = createWritingHelpUI({ api, render, speak: speech.say, replay: speech.replay });
 hintLists.push(phrasesUI, writingHelpUI);
 const quizUI = createQuizUI({ api, render, getState: () => state, error });
+const transferUI = createTransferUI({ api, render, getState: () => state, error });
 // A hint read aloud never talks over an explanation, and an explanation starting ends one.
 const explainUI = createExplainUI({ api, auto: () => $('voice-auto').checked, before: () => speech.stop(), engine: () => explainByBrowser() ? 'browser' : 'gemini', fetcher: speak });
 const voiceUI = createVoiceUI({ getState: () => state, render, error, quiet: () => { speech.stop(); explainUI.stop(); },
@@ -408,7 +411,8 @@ document.addEventListener('keydown', event => {
     if (!voiceMode(state?.active)) return;
     if (!voiceUI.isOpen()) openDrawer('voice', { focus: false });
     voiceUI.toggle();
-  } else if (stage === 'phrases') phrasesUI.hint();
+  } else if (transferUI.isOpen()) transferUI.help();
+  else if (stage === 'phrases') phrasesUI.hint();
   else if (stage === 'practice') writingHelpUI.advance();
 });
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && drawer && !event.isComposing) { event.preventDefault(); closeDrawer(); } });
