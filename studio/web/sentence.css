@@ -269,3 +269,13 @@ dialog#settings::backdrop{background:rgba(30,40,36,.25)}
 #settings .settings-result .ok{color:var(--accent)}#settings .settings-result .bad{color:#a04630}
 #settings .bar{display:flex;gap:12px;align-items:center;margin-top:16px}
 @media (max-width:560px){#settings .field{grid-template-columns:1fr}#settings .field .muted{grid-column:1}dialog#settings{padding:18px 16px 14px}}
+/* Rewards: a burst for a chunk written right, more for a sentence, the whole page for a passage. */
+#reward-layer{position:fixed;inset:0;pointer-events:none;z-index:50;overflow:hidden}
+.reward-piece{position:absolute;border-radius:2px;transform:translate(-50%,-50%);animation:reward-fly ease-out forwards}
+@keyframes reward-fly{0%{transform:translate(-50%,-50%) scale(.4);opacity:1}55%{transform:translate(calc(var(--dx) - 50%),calc(var(--dy) - 50%)) rotate(calc(var(--turn) / 2)) scale(1);opacity:1}100%{transform:translate(calc(var(--dx) - 50%),calc(var(--dy) + var(--fall) - 50%)) rotate(var(--turn)) scale(.9);opacity:0}}
+.reward-banner{position:fixed;left:50%;top:28%;transform:translate(-50%,-50%);font-size:24px;font-weight:600;color:var(--accent);background:#fdfdfbe6;padding:10px 22px;border-radius:999px;box-shadow:0 6px 24px #315e4826;white-space:nowrap;animation:reward-banner 1.5s ease-out forwards}
+.reward-banner.big{font-size:40px;padding:16px 34px;animation-duration:2.2s}
+@keyframes reward-banner{0%{opacity:0;transform:translate(-50%,-50%) scale(.7)}18%{opacity:1;transform:translate(-50%,-50%) scale(1.08)}30%{transform:translate(-50%,-50%) scale(1)}75%{opacity:1}100%{opacity:0;transform:translate(-50%,-60%) scale(1)}}
+.reward-pop{animation:reward-pop .35s ease-out}
+@keyframes reward-pop{0%{transform:scale(1)}40%{transform:scale(1.025)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.reward-banner,.reward-banner.big{animation:reward-fade 1.5s linear forwards}.reward-pop{animation:none}@keyframes reward-fade{0%,100%{opacity:0}15%,75%{opacity:1}}}

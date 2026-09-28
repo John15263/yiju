@@ -28,10 +28,10 @@ export function createTransferUI({ api, render, getState, error }) {
       requestAnimationFrame(() => { if (done) $('transfer-submit').focus(); else { box.focus(); if (item.tries) box.select(); } });
     }
     box.disabled = done || working;
-    box.placeholder = `用${LANGUAGE[language] || '外语'}写出来，用上刚才练过的说法。`;
+    box.placeholder = `用${LANGUAGE[language] || '外语'}把这个意思说出来，可以用刚才练过的说法。`;
     $('transfer-hints').replaceChildren(...[...item.hints].reverse().map(text => Object.assign(document.createElement('li'), { textContent: text, lang: 'zh-CN' })));
     $('transfer-hints').hidden = !item.hints.length;
-    const note = last?.note || (last && !done && ['form', 'miss'].includes(last.verdict) ? '还差一点，再试一次。' : '');
+    const note = last?.note || (last && !done && ['partly', 'miss'].includes(last.verdict) ? '还差一点，再试一次。' : '');
     $('transfer-note').textContent = note;
     $('transfer-result').hidden = !done;
     if (done) {

@@ -56,6 +56,8 @@ export function createServer({ store, pack, cfg, settings = new Settings(), env 
     ['/hint-log.js', ['hint-log.js', 'text/javascript; charset=utf-8']],
     ['/foreign.js', ['foreign.js', 'text/javascript; charset=utf-8']],
     ['/usage-text.js', ['usage-text.js', 'text/javascript; charset=utf-8']],
+    ['/hint-gate.js', ['hint-gate.js', 'text/javascript; charset=utf-8']],
+    ['/reward.js', ['reward.js', 'text/javascript; charset=utf-8']],
     ['/explain.js', ['explain.js', 'text/javascript; charset=utf-8']],
     ['/voice-worklet.js', ['voice-worklet.js', 'text/javascript; charset=utf-8']],
     ['/compose.js', ['compose.js', 'text/javascript; charset=utf-8']],
@@ -102,7 +104,7 @@ export function createServer({ store, pack, cfg, settings = new Settings(), env 
       if (req.headers.origin) check(req.headers.origin === origin, 'Cross-origin request denied', 403);
       check(!['cross-site', 'same-site'].includes(req.headers['sec-fetch-site']), 'Cross-site request denied', 403);
       const url = new URL(req.url, origin), path = url.pathname;
-      if (req.method === 'GET' && path === '/api/health') return json(res, { service: 'generative-studio', version: '0.4.6' });
+      if (req.method === 'GET' && path === '/api/health') return json(res, { service: 'generative-studio', version: '0.4.7' });
       if (req.method === 'GET' && files.has(path)) {
         const [file, mime] = files.get(path);
         if (path === '/' || path === '/legacy') res.setHeader('Set-Cookie', `studio_auth=${token}; HttpOnly; SameSite=Strict; Path=/`);

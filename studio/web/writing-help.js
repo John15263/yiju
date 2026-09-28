@@ -1,4 +1,5 @@
 import { createHintLog, sentenceHints } from './hint-log.js';
+import { hintsOpen } from './hint-gate.js';
 
 export function createWritingHelpUI({ api, render, speak = () => {}, replay = () => {} }) {
   const $ = id => document.getElementById(id), input = $('writing-text');
@@ -7,10 +8,7 @@ export function createWritingHelpUI({ api, render, speak = () => {}, replay = ()
   // Background preparation is separate from display: an unrequested hint never rises above the Chinese idea.
   const AUTO_LEVEL = 1;
   let round = null, locked = false, composing = false, observed = '', practiceKey = '', version = 0, timer = null, idleSince = 0;
-  let hint = null, level = 1, displayed = 0, flight = null, queuedManual = '', lastRequest = 0, seenQueue = Promise.resolve(), stuckTimer = null;
-  // Still nothing written a while after the idea was shown: the next word follows by itself. Only the
-  // word; the phrase and the full continuation still wait for Command + [.
-  const STUCK = 10000;
+  let hint = null, level = 1, displayed = 0, flight = null, queuedManual = '', lastRequest = 0, seenQueue = Promise.resolve();
   const snapshot = () => round ? { round_id: round.id, window_start: round.window_start, draft: input.value, caret: input.selectionStart } : null;
   const key = s => s ? JSON.stringify(s) : '';
   const status = message => { $('writing-help-status').textContent = message; };
@@ -26,16 +24,15 @@ export function createWritingHelpUI({ api, render, speak = () => {}, replay = ()
       // The list shows it once the practice has recorded it (render above); here it is read aloud.
       status('');
       speak(showing === 1 ? result.meaning : result[['', '', 'word', 'phrase', 'continuation'][showing]], round.language);
-      clearTimeout(stuckTimer);
-      if (showing === 1 && result.status !== 'complete' && result.word && $('writing-help-auto').checked) stuckTimer = setTimeout(() => {
-        if (valid(s, v) && displayed < 2 && !locked && !composing) { level = 2; present(result, s, v, 2); }
-      }, STUCK);
+      // What comes by itself only describes; the word itself waits for Command + [ (the learner, 2026-09-28).
     }).catch(e => { if (valid(s, v)) status(`${e.message} 草稿保留，可以再按 Command + [。`); });
   }
   function schedule(manual = false) {
     clearTimeout(timer);
     // Only the window being used asks by itself; another one open on the same practice stays quiet.
     if (!round || locked || composing || (!manual && (!$('writing-help-auto').checked || !document.hasFocus()))) return;
+    // Nothing comes by itself before 40% of the sentence is written.
+    if (!manual && !hintsOpen(input.value, round.reference, round.language)) return;
     const now = Date.now();
     // Every hint stays in the list, so they may come quickly: after a 1 s pause, 1.5 s apart (2026-09-27; was 1.5 s and 2.5 s).
     timer = setTimeout(() => request(manual), manual ? 0 : Math.max(0, idleSince + 1000 - now, lastRequest + 1500 - now));
@@ -64,7 +61,7 @@ export function createWritingHelpUI({ api, render, speak = () => {}, replay = ()
   function changed() {
     const s = snapshot(), next = key(s);
     if (next === observed) return;
-    observed = next; version++; idleSince = Date.now(); clearTimeout(timer); clearTimeout(stuckTimer); hint = null; level = 1; displayed = 0;
+    observed = next; version++; idleSince = Date.now(); clearTimeout(timer); hint = null; level = 1; displayed = 0;
     const nextPractice = s ? JSON.stringify([s.round_id, s.window_start]) : '';
     // Invalidate the request snapshot immediately, but keep visible help until its replacement is ready.
     if (nextPractice !== practiceKey) {
@@ -78,8 +75,8 @@ export function createWritingHelpUI({ api, render, speak = () => {}, replay = ()
   function advance() {
     if (!round || locked || composing) return;
     changed(); clearTimeout(timer);
-    // The ladder always starts at the Chinese idea and rises one step per request.
-    level = Math.min(4, displayed + 1);
+    // Asking gives the next word first, then the prepared wording from here on; the description is what comes by itself.
+    level = displayed < 2 ? 2 : 4;
     void request(true);
   }
   input.addEventListener('input', changed);
@@ -107,7 +104,7 @@ export function createWritingHelpUI({ api, render, speak = () => {}, replay = ()
     reading: text => log.reading(text),
     async flush() {
       // Submission/navigation waits only for displayed-help records, never for generation.
-      clearTimeout(timer); clearTimeout(stuckTimer); version++; queuedManual = ''; hint = null; displayed = 0; clear(); await seenQueue;
+      clearTimeout(timer); version++; queuedManual = ''; hint = null; displayed = 0; clear(); await seenQueue;
     },
   };
 }

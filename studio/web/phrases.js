@@ -1,11 +1,12 @@
 import { renderCorrection } from './correction.js';
 import { createHintLog, chunkHints } from './hint-log.js';
+import { hintsOpen } from './hint-gate.js';
 
 export function createPhrasesUI({ api, render, getState, error, storageNote = () => {}, renderMarkup = () => null, beforeWrite = () => {}, speak = () => {}, replay = () => {} }) {
   const $ = id => document.getElementById(id), input = $('phrase-text');
   const log = createHintLog($('phrase-hint-log'), { onPick: entry => replay(entry.spoken, current?.language) });
   let current = null, mounted = '', draftKey = '', working = '', composing = false, requested = '', ordered = '', focusPending = false, helpQueue = Promise.resolve();
-  let studyKey = '', studyShownAt = 0, autoTimer = null, idleSince = 0, autoAt = 0, autoDraft = null, heardUpTo = null;
+  let studyKey = '', studyShownAt = 0, autoTimer = null, idleSince = 0, autoAt = 0, autoDraft = null, stuckDraft = null, heardUpTo = null;
   // Hints come in the language being learned; hearing them read aloud is listening practice.
   const autoOn = () => $('writing-help-auto').checked, hintLanguage = () => 'target';
   const context = () => current ? { round_id: current.id, window_start: current.window_start, index: current.phrases?.index } : null;
@@ -33,17 +34,18 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
     const key = contextKey();
     helpQueue = helpQueue.then(async () => {
       if (contextKey() !== key) return;
+      // Asking gives the key words first, then the prepared wording; descriptions are what comes by itself.
       const level = current.phrases.inputs[current.phrases.index].hint_level;
-      if (level < 3) await send('hint', { level: level + 1, draft: input.value, hint_language: hintLanguage() });
+      if (level < 3) await send('hint', { level: Math.max(2, level + 1), draft: input.value, hint_language: hintLanguage() });
     });
   }
   const passed = saved => saved?.result?.cleared && saved.result.text === input.value;
   // The check is done with, as long as the text is still what was checked: passed and talked over, or held
   // back and its correction explained. Changing the text and pressing again checks it again instead.
   const settled = saved => !saved?.completed && saved?.result?.text === input.value && (saved.result.cleared || saved.result.verdict === 'adjust');
-  // Hints come by themselves, without a button: a first direction when the chunk opens and the box is
-  // still empty, a hint about the draft at every pause, and the key words when nothing has changed for a
-  // while after a hint. The prepared wording itself only ever comes from Command + [. Every hint stays in the
+  // Hints come by themselves, without a button, once 40% of the chunk is written: a description of what comes
+  // next at every pause, and another one when nothing has changed for a while. They never name a word; the key
+  // words and the prepared wording only ever come from Command + [. Every hint stays in the
   // list below the box, so they may come quickly (2026-09-27: 1 s pause, 1.5 s apart; before, 1.5 s and 2.5 s).
   const PAUSE = 1000, START = 3000, STUCK = 10000, APART = 1500;
   function scheduleAuto(delay = PAUSE) {
@@ -58,15 +60,19 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
     const saved = current.phrases.inputs[current.phrases.index], draft = input.value;
     // The reference is already out, or a check is already speaking for exactly this text.
     if (saved.hint_level >= 3 || saved.result?.text === draft) return;
+    // Nothing comes by itself before 40% of the chunk is written.
+    if (!hintsOpen(draft, current.phrases.items[current.phrases.index].reference, current.language)) return;
     // New text (or the empty box at the start) gets a hint about it; the same text again means stuck.
-    const level = draft !== autoDraft ? 1 : saved.hint_level < 2 ? 2 : 0;
+    // Stuck once per draft: the same text still there after a description gets another one.
+    const level = draft !== autoDraft ? 1 : draft !== stuckDraft ? 2 : 0;
     if (!level) return;
     autoDraft = draft; autoAt = Date.now();
+    if (level === 2) stuckDraft = draft;
     const key = contextKey();
     helpQueue = helpQueue.then(async () => {
       if (contextKey() !== key || input.value !== draft || working) return;
       try { render(await api('/phrases/hint', { ...context(), level, draft, auto: true, hint_language: hintLanguage() })); } catch { return; }
-      // Still nothing written a while after this hint: the next one is the key words.
+      // Still nothing written a while after this hint: it is described again, another way.
       if (level === 1 && contextKey() === key && input.value === draft) { clearTimeout(autoTimer); autoTimer = setTimeout(autoHint, STUCK); }
     });
   }
@@ -142,7 +148,7 @@ export function createPhrasesUI({ api, render, getState, error, storageNote = ()
     }
     const key = `${r.id}:${r.window_start}:${p.index}`;
     if (key !== mounted) {
-      mounted = key; draftKey = `phrase-draft:${r.id}:${p.run || 0}:${p.index}`; autoDraft = null; heardUpTo = null;
+      mounted = key; draftKey = `phrase-draft:${r.id}:${p.run || 0}:${p.index}`; autoDraft = null; stuckDraft = null; heardUpTo = null;
       // A chunk that opens with an empty box gets a first direction without waiting to be asked.
       idleSince = Date.now(); scheduleAuto(START);
       try { input.value = localStorage.getItem(draftKey) ?? saved.text; } catch { input.value = saved.text; }

@@ -5,14 +5,15 @@ import { loose } from '../web/voice-mode.js';
 import { openTransfer } from '../web/view.js';
 import { transferCard } from './anki.mjs';
 
-// 换个场合: a wording with essentially one natural form (its axis, marked on the chunk when the material was
-// prepared) comes back in a new, everyday setting, and the learner says the new sentence. Once right after each
+// 换个场合: the chunk carrying a sentence's core meaning (its axis, marked by meaning, not grammar, when the
+// material was prepared) comes back in a new, everyday setting, and the learner says the new sentence. Once right after each
 // sentence, with the axis that cost the most; once more when the passage is done, each axis in yet another
 // setting, in shuffled order. The design is in studio/docs/transfer.md.
 const now = () => new Date().toISOString();
 const makeSchema = { type: 'object', additionalProperties: false, required: ['items'], properties: { items: { type: 'array', items: {
   type: 'object', additionalProperties: false, required: ['prompt', 'example'], properties: { prompt: { type: 'string' }, example: { type: 'string' } } } } } };
-const VERDICTS = ['axis', 'form', 'other', 'miss'];
+// Judged by meaning, not grammar (the learner, 2026-09-28): was the core meaning carried into the new setting?
+const VERDICTS = ['carried', 'partly', 'miss'];
 const checkSchema = { type: 'object', additionalProperties: false, required: ['verdict', 'note', 'suggestion'],
   properties: { verdict: { type: 'string', enum: VERDICTS }, note: { type: 'string' }, suggestion: { type: 'string' } } };
 export const callTransferMake = (packet, cfg) => textJSON(packet, cfg,
@@ -167,7 +168,7 @@ export class Transfers {
     let result = null;
     // Said as the example: right, locally and for free. Anything else is judged, and another wording that
     // works is not wrong, only not the one being practised.
-    if (loose(answer) === loose(item.example)) result = { verdict: 'axis', note: '', suggestion: answer, by: 'local' };
+    if (loose(answer) === loose(item.example)) result = { verdict: 'carried', note: '', suggestion: answer, by: 'local' };
     else if (textConfigured(this.cfg)) {
       this.judging.add(item.id);
       try {
@@ -187,17 +188,17 @@ export class Transfers {
     if (saved.status !== 'open') return this.board.public(s);
     saved.tries++; saved.inputs.push(answer); saved.results.push({ ...result, at: now() });
     const last = saved.tries >= TRIES;
-    if (result.verdict === 'axis') saved.passed = true;
+    if (result.verdict === 'carried') saved.passed = true;
     else if (result.verdict === 'unchecked' || last) saved.passed = result.verdict === 'unchecked' ? null : false;
-    // Said right another way: asked once more for the wording being practised, with where it was met.
-    else if (result.verdict === 'other' && saved.hint_level < 1) this.hint(saved, 1);
-    const settled = result.verdict === 'axis' || result.verdict === 'unchecked' || last;
+    // Only part of the meaning came through: asked once more, with where it was met.
+    else if (result.verdict === 'partly' && saved.hint_level < 1) this.hint(saved, 1);
+    const settled = result.verdict === 'carried' || result.verdict === 'unchecked' || last;
     this.event(owner, transfer, saved, { try: saved.tries, answer, verdict: result.verdict });
     if (settled) {
       saved.status = 'done';
       if (transfer.round === 1) this.cfg.anki?.enqueue(transferCard(saved, owner));
       // Right, with nothing to look at: straight on.
-      if (result.verdict === 'axis' && !result.note && loose(result.suggestion) === loose(answer)) this.proceed(s, r, transfer);
+      if (result.verdict === 'carried' && !result.note && loose(result.suggestion) === loose(answer)) this.proceed(s, r, transfer);
     }
     return this.commit(s);
   }

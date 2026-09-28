@@ -1,6 +1,7 @@
 import { check, fields, id, oneOf, text } from './validation.mjs';
 import { textJSON, textError, textConfigured, textKeyMissing } from './llm.mjs';
 import { prompt } from './prompts.mjs';
+import { callPhraseHint } from './phrases.mjs';
 
 const keys = ['status', 'meaning', 'word', 'phrase', 'continuation', 'note'];
 const schema = { type: 'object', properties: Object.fromEntries(keys.map(k => [k, k === 'status'
@@ -24,11 +25,9 @@ function opening(value, language, count) {
 const LOCAL = {
   zh: { complete: '这一句已经写完整，可以提交看看反馈。', next: '接着把这一句的意思表达完整。', note: '沿已有参考的一种接法，也可以用自己的表达。' },
   en: { complete: 'This sentence looks complete. Send it to get feedback.', start: 'Start with the first part of your idea.',
-    next: 'Keep going. Say the next part of your idea.', note: 'This is one way to go on. Your own words are fine too.',
-    first: w => `Start with ${w}.`, then: w => `Keep going. Next word: ${w}.` },
+    next: 'Keep going. Say the next part of your idea.', note: 'This is one way to go on. Your own words are fine too.' },
   ja: { complete: 'この文はできたみたい。送ってフィードバックを見てね。', start: '言いたいことの最初の部分から書いてみて。',
-    next: 'その調子。次の部分を書いてみて。', note: 'これは続け方の一つ。自分の言葉でも大丈夫。',
-    first: w => `「${w}」から書いてみて。`, then: w => `その調子。つぎは「${w}」。` },
+    next: 'その調子。次の部分を書いてみて。', note: 'これは続け方の一つ。自分の言葉でも大丈夫。' },
 };
 // A literal reference prefix can be continued instantly. Other phrasings go to Gemini.
 export function localWritingHelp(r, draft, caret, hintLanguage = 'zh') {
@@ -43,17 +42,17 @@ export function localWritingHelp(r, draft, caret, hintLanguage = 'zh') {
     cursor += content.length;
     if (typeof segment !== 'string' && cursor > offset) { cue = segment.hints[0]; break; }
   }
-  // The prepared cues are Chinese, so a target-language hint does without them. It names the next word itself:
-  // key words are given freely, in the one language the hint is read in (the learner, 2026-09-28).
-  const word = opening(rest, r.language, 1), named = word.replace(/^[\p{P}\s]+/u, '');
-  const meaning = chinese ? (!offset ? r.meaning : cue ? `接下来的一处关键意思：${cue}` : say.next)
-    : !named ? (!offset ? say.start : say.next) : !offset ? say.first(named) : say.then(named);
+  // The prepared cues are Chinese, so a target-language hint does without them. The next word itself is not
+  // named here: it is the next level (word), given when the learner is still stuck (the learner, 2026-09-28:
+  // naming it at once was too fast). With a text service, the request below describes it in other words.
+  const word = opening(rest, r.language, 1);
+  const meaning = chinese ? (!offset ? r.meaning : cue ? `接下来的一处关键意思：${cue}` : say.next) : !offset ? say.start : say.next;
   return { status: 'continue', meaning,
     word, phrase: opening(rest, r.language, r.language === 'ja' ? 4 : 5), continuation: rest,
     note: say.note };
 }
 export class WritingHelp {
-  constructor(board, cfg, infer = callWritingHelp) { this.board = board; this.cfg = cfg; this.infer = infer; this.cache = new Map(); this.pending = 0; }
+  constructor(board, cfg, infer = callWritingHelp, describe = callPhraseHint) { this.board = board; this.cfg = cfg; this.infer = infer; this.describe = describe; this.cache = new Map(); this.pending = 0; }
   target(body) {
     id(body.round_id); check(Number.isInteger(body.window_start) && body.window_start >= 0, 'Invalid writing window');
     const s = this.board.read(), r = s.rounds.find(r => r.id === body.round_id);
@@ -84,9 +83,20 @@ export class WritingHelp {
       if (!local) this.pending++;
       entry.promise = (async () => {
         try {
-          const result = local ? { ...local, model: 'prepared-reference' } : await this.infer(packet, this.cfg);
+          let result = local ? { ...local, model: 'prepared-reference' } : await this.infer(packet, this.cfg), described = false;
+          // Still on the prepared wording: the next word is described in other words first; the word itself waits
+          // for the next level. Without a text service, or if this fails, the plain local line stays.
+          const named = local?.status === 'continue' ? local.word.replace(/^[\p{P}\s]+/u, '') : '';
+          if (named && textConfigured(this.cfg)) {
+            try {
+              const live = (await this.describe({ language: r.language, write_in: packet.write_in, chunk_meaning: r.meaning, chunk_reference: r.reference,
+                draft: body.draft, level: 1, trigger: 'describe', next_word: named, hint_language: hintLanguage }, this.cfg)).value;
+              fields(live, ['hint'], ['hint']); text(live.hint, 500);
+              result = { ...result, meaning: live.hint }; described = true;
+            } catch {}
+          }
           fields(result, [...keys, 'model'], [...keys, 'model']); text(result.model, 100);
-          entry.result = { hint_id: entry.id, ...validate(Object.fromEntries(keys.map(k => [k, result[k]]))), provider: local ? 'local' : 'gemini', model: result.model };
+          entry.result = { hint_id: entry.id, ...validate(Object.fromEntries(keys.map(k => [k, result[k]]))), provider: local && !described ? 'local' : this.cfg.textProvider || 'gemini', model: result.model };
         } catch (e) { entry.error = textError(e, this.cfg); }
         finally { if (!local) this.pending--; entry.finished = true; }
       })();

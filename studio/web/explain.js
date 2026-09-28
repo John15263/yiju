@@ -29,7 +29,7 @@ export function wavOf(parts) {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-export function createExplainUI({ api, auto, before = () => {}, engine = () => 'gemini', fetcher = (...args) => globalThis.fetch(...args) }) {
+export function createExplainUI({ api, auto, before = () => {}, engine = () => 'gemini', fetcher = (...args) => globalThis.fetch(...args), wait = () => 0 }) {
   const $ = id => document.getElementById(id);
   let moment = null, lastKey, lines = [], status = '', loading = false, speed = savedSpeed();
   // Playing: one run at a time; audio per line is kept for the moment, so replaying costs nothing. `how` is
@@ -289,7 +289,11 @@ export function createExplainUI({ api, auto, before = () => {}, engine = () => '
         // Already heard here once: the script is shown, and plays again only when asked.
         const heard = key ? (r.support_events || []).findLast(e => e.kind === 'explanation' && e.detail?.moment === key) : null;
         if (heard) lines = heard.detail.lines;
-        if (arrived && auto() && document.hasFocus()) { if (lines.length) void play(0); else void load(true); }
+        // A reward sound still playing is let finish first.
+        if (arrived && auto() && document.hasFocus()) {
+          const starting = key;
+          setTimeout(() => { if (moment?.key !== starting) return; if (lines.length) void play(0); else void load(true); }, wait());
+        }
       }
       lastKey = key;
       paint();

@@ -2,7 +2,7 @@
 // No DOM access here, so the stage mapping stays testable without a browser.
 
 export const SUPPORT_LEVELS = ['无外语提示', '关键词', '句子骨架', '完整参考'];
-export const PHRASE_HINT_LEVELS = ['未看提示', '结构提示', '开头提示', '参考'];
+export const PHRASE_HINT_LEVELS = ['未看提示', '描述', '关键词', '参考'];
 // Phrase hints count 1–3 on their own ladder; support and writing hints share the 0–3 support scale.
 const PHRASE_SCALE = new Set(['phrase_hint', 'phrase_expression']);
 

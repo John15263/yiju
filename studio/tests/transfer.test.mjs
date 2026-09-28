@@ -73,8 +73,8 @@ test('the axis chosen is the one that cost the most, and one axis is practised o
 
 test('right after a sentence: the question is written while it is practised, stands before the next sentence, and is filed for Anki', async t => {
   const { board, cmd, write, review, at, cards, made, judged, transfers } = setup(t, {
-    judge: packet => packet.try === 1 ? { verdict: 'form', note: 'by 前面还少一个词', suggestion: 'He has been worn down by overtime.' }
-      : { verdict: 'form', note: '还是少了 been', suggestion: 'He has been worn down by overtime.' } });
+    judge: packet => packet.try === 1 ? { verdict: 'miss', note: '少了"被加班耗空"的意思', suggestion: 'He has been worn down by overtime.' }
+      : { verdict: 'miss', note: '还是没说出被什么耗空', suggestion: 'He has been worn down by overtime.' } });
   write(); await tick();
   assert.equal(made.length, 1);
   assert.equal(made[0].items[0].axis, 'be worn down by ＋某事'); assert.equal(made[0].avoid, source);
@@ -88,7 +88,7 @@ test('right after a sentence: the question is written while it is practised, sta
 
   await transfers.answer({ ...at(), answer: 'He worn down overtime.' });
   let item = board.get().active.transfer.items[0];
-  assert.equal(item.status, 'open'); assert.equal(item.results[0].note, 'by 前面还少一个词');
+  assert.equal(item.status, 'open'); assert.equal(item.results[0].note, '少了"被加班耗空"的意思');
   assert.equal(judged[0].axis, 'be worn down by ＋某事'); assert.equal(judged[0].example, item.example);
   await transfers.answer({ ...at(), answer: 'He is worn down by overtime.' });
   item = board.get().active.transfer.items[0];
@@ -103,8 +103,8 @@ test('right after a sentence: the question is written while it is practised, sta
   assert.equal(st.collection.units[0].stage, 'complete');
 });
 
-test('said right another way, it is asked for once more with where the wording was met; said as the example, it goes straight on', async t => {
-  const { board, cmd, write, review, at, transfers } = setup(t, { judge: () => ({ verdict: 'other', note: '意思对了，试试刚才那个说法？', suggestion: 'He is exhausted by overtime.' }) });
+test('only part of the meaning carried, it is asked for once more with where it was met; said as the example, it goes straight on', async t => {
+  const { board, cmd, write, review, at, transfers } = setup(t, { judge: () => ({ verdict: 'partly', note: '只说了累，少了被什么一点点耗空', suggestion: 'He is worn down by overtime.' }) });
   write(); await tick(); review(); cmd('complete');
   await transfers.answer({ ...at(), answer: 'He is exhausted by overtime.' });
   const item = board.get().active.transfer.items[0];
@@ -138,7 +138,7 @@ test('a sentence finished before its question was written goes on without it', a
 });
 
 test('when the passage is done, every axis comes back once more in yet another setting', async t => {
-  const { board, cmd, write, review, at, made, transfers } = setup(t, { judge: () => ({ verdict: 'axis', note: '', suggestion: 'x' }) });
+  const { board, cmd, write, review, at, made, transfers } = setup(t, { judge: () => ({ verdict: 'carried', note: '', suggestion: 'x' }) });
   for (let n = 0; n < 2; n++) {
     write(); await tick();
     review(); cmd('complete');

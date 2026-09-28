@@ -119,9 +119,9 @@ test('usage counts each Gemini speech model over Google’s day and says it in a
   assert.deepEqual([0.004, 0.18, 1.25, 9.96, 12.4].map(badgeDollars), ['$.00', '$.18', '$1.3', '$10', '$12']);
 });
 
-// Key words are given freely (2026-09-28): on the prepared wording, a pause gets the next word that carries meaning,
-// and every canned line stays in one language, since one voice reads it.
-test('a pause on the prepared wording names the next word that carries meaning, in one language', async () => {
+// On the prepared wording, the next word that carries meaning is the one described, then named when still stuck
+// (2026-09-28); every canned line stays in one language, since one voice reads it.
+test('on the prepared wording the next word that carries meaning is found, and a canned line never names it', async () => {
   const { nextWord } = await import('../server/phrases.mjs');
   assert.equal(nextWord('I enjoy', 'I enjoy cooking,', 'en'), 'cooking');
   assert.equal(nextWord("I've recently started learning", "I've recently started learning to cook,", 'en'), 'cook', 'to is left for the learner');
@@ -130,8 +130,8 @@ test('a pause on the prepared wording names the next word that carries meaning, 
   assert.equal(nextWord('I enjoy', 'I enjoy to', 'en'), 'to', 'a little word when nothing else is left');
   const { localWritingHelp } = await import('../server/writing-help.mjs');
   const ja = localWritingHelp({ language: 'ja', reference: '私は料理が好きです。', meaning: '我喜欢做饭。' }, '私は', 2, 'target');
-  assert.equal(ja.meaning, 'その調子。つぎは「料理」。');
-  assert.equal(localWritingHelp({ language: 'ja', reference: '料理を始めて、週末に作る。', meaning: '' }, '料理を始めて', 6, 'target').meaning,
-    'その調子。つぎは「週末」。', 'the comma before the word is not named with it');
+  assert.equal(ja.meaning, 'その調子。次の部分を書いてみて。', 'the word is the next level, not the first line');
+  assert.equal(ja.word, '料理');
+  assert.equal(localWritingHelp({ language: 'ja', reference: '料理を始めて、週末に作る。', meaning: '' }, '料理を始めて', 6, 'target').word.replace(/^[\p{P}\s]+/u, ''), '週末');
   assert.doesNotMatch(localWritingHelp({ language: 'ja', reference: '私は料理が好きです。', meaning: '' }, '私は料理が好きです。', 10, 'target').meaning, /[A-Za-z]/, 'no English in a Japanese line');
 });

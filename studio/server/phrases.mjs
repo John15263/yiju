@@ -4,6 +4,7 @@ import { prompt } from './prompts.mjs';
 import { callJev, validAnswer } from './decisions.mjs';
 import { phraseSchema, phraseState, openChunk, finishLearn } from './phrase-material.mjs';
 import { loose } from '../web/voice-mode.js';
+import { hintsOpen } from '../web/hint-gate.js';
 import { makeQuiz } from './quiz.mjs';
 import { clozeCard } from './anki.mjs';
 
@@ -58,9 +59,6 @@ const ON_TRACK = {
   en: ['Good so far. Keep going.', 'That looks complete. Check it now.'],
   ja: ['ここまで大丈夫。そのまま続けてね。', 'できたみたい。チェックしてみてね。'],
 };
-// Still on the prepared wording and pausing: the next word of it, for that is what the pause waits for. Key words
-// are given freely (the learner, 2026-09-28): writing them out again and again is how the structure sinks in.
-const NEXT = { zh: w => `到这里都对，下一个词是 ${w}。`, en: w => `Good so far. Next word: ${w}.`, ja: w => `ここまで大丈夫。つぎは「${w}」。` };
 // Little words are left for the learner to fit in; the next word worth giving is the next one that carries meaning.
 const LITTLE = { en: new Set(['a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'for', 'and', 'or', 'but', 'with', 'by', 'from', 'as']) };
 export function nextWord(draft, reference, language) {
@@ -169,26 +167,35 @@ export class Phrases {
     if (body.auto !== undefined) check(body.auto === true && body.level <= 2 && typeof body.draft === 'string', 'Invalid automatic hint');
     const auto = !!body.auto;
     const trigger = !auto ? 'request' : body.level === 2 ? 'stuck' : body.draft.trim() ? 'pause' : 'start';
-    // The first level follows the draft as it changes; the key words are given once; asking climbs.
-    const settled = input => auto ? (body.level === 1 ? input.hint_level >= 3 : input.hint_level >= 2) : body.level <= input.hint_level;
-    if (settled(opened.input)) return this.board.public(opened.s);
-    // Without a live hint, asking still gets something about meaning: the chunk's own Chinese at level 1
-    // (the prepared first hint describes structure, which the chunk stage leaves alone).
-    let written = body.level === 3 ? opened.item.reference : body.level === 1 ? (MEANING_FIRST[opened.r.language] || MEANING_FIRST.en) : opened.item.hints[1];
-    let source = body.level === 3 ? 'reference' : 'prepared';
-    if (trigger === 'pause' && followsReference(body.draft, opened.item.reference)) {
+    // Hints that come by themselves only ever describe, never name a word or give its first letter; the words and
+    // then the prepared wording come only from Command + [ (the learner, 2026-09-28). So an automatic hint is
+    // always level 1, stuck included: a stuck learner gets the word described again, another way.
+    const level = auto ? 1 : body.level;
+    // Asking climbs; automatic hints follow the draft until the prepared wording is out. Stuck comes once per draft.
+    const settled = input => auto ? input.hint_level >= 3 : level <= input.hint_level;
+    if (settled(opened.input) || (trigger === 'stuck' && opened.input.stuck_draft === body.draft)) return this.board.public(opened.s);
+    // Nothing comes by itself before 40% of the chunk is written by the learner.
+    if (auto && !hintsOpen(body.draft, opened.item.reference, opened.r.language)) return this.board.public(opened.s);
+    // Without a live hint, asking still gets something: the chunk's meaning on screen at level 1, the prepared
+    // key words at level 2, the prepared wording at level 3.
+    let written = level === 3 ? opened.item.reference : level === 1 ? (MEANING_FIRST[opened.r.language] || MEANING_FIRST.en) : opened.item.hints[1];
+    let source = level === 3 ? 'reference' : 'prepared';
+    // Still on the prepared wording: the next word is described, in other words.
+    let describe = '';
+    if (auto && followsReference(body.draft, opened.item.reference)) {
       const [going, done] = onTrack(hintLanguage, opened.r.language), next = nextWord(body.draft, opened.item.reference, opened.r.language);
-      const say = NEXT[hintLanguage === 'target' ? opened.r.language : 'zh'] || NEXT.zh;
-      written = compact(body.draft) === compact(opened.item.reference) ? done : next ? say(next) : going;
+      written = compact(body.draft) === compact(opened.item.reference) ? done : going;
       source = 'local';
-    } else if (body.level < 3 && textConfigured(this.cfg) && this.hinting < 3) {
+      if (next && written === going) describe = next;
+    }
+    if ((source !== 'local' || describe) && level < 3 && textConfigured(this.cfg) && this.hinting < 3) {
       this.hinting++;
       try {
         // The language the hint is written in, said outright: told only `language: ja`, some services wrote Japanese
         // hints in English or Chinese (2026-09-28).
         const live = (await this.writeHint({ language: opened.r.language, write_in: opened.r.language === 'ja' ? '日语（日本語）' : '英语（English）', chunk_meaning: opened.item.meaning,
-          chunk_reference: opened.item.reference, draft: body.draft || '', level: body.level, trigger,
-          hint_language: hintLanguage }, this.cfg)).value;
+          chunk_reference: opened.item.reference, draft: body.draft || '', level, trigger: describe && trigger === 'pause' ? 'describe' : trigger,
+          ...(describe ? { next_word: describe } : {}), hint_language: hintLanguage }, this.cfg)).value;
         fields(live, ['hint'], ['hint']); text(live.hint, 500);
         written = live.hint; source = this.cfg.textProvider || 'gemini';
       } catch {} finally { this.hinting--; }
@@ -200,9 +207,10 @@ export class Phrases {
     try { current = this.target(body, ['level', 'draft', 'auto', 'hint_language'], ['level'], true); } catch { return this.board.get(); }
     const { s, r, input } = current;
     if (settled(input)) return this.board.public(s);
-    input.hint_level = Math.max(input.hint_level, body.level);
-    (input.hints ||= [])[body.level - 1] = written;
-    r.support_events.push({ kind: 'phrase_hint', level: body.level, at: now(),
+    input.hint_level = Math.max(input.hint_level, level);
+    if (trigger === 'stuck') input.stuck_draft = body.draft;
+    (input.hints ||= [])[level - 1] = written;
+    r.support_events.push({ kind: 'phrase_hint', level, at: now(),
       detail: { index: body.index, run: r.phrases.run || 0, text: written, source, ...(auto ? { auto: true, trigger, draft: body.draft } : {}) } });
     return this.commit(s);
   }

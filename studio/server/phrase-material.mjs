@@ -1,8 +1,9 @@
 import { check, fields, text } from './validation.mjs';
 
 // Keep nested provider schemas simple; counts and exact coverage are checked below.
-// axis is the part of a chunk that has essentially one natural wording ("be worn down by ＋某事"), kept for
-// practising it again in another setting; empty when the chunk can be said many ways.
+// axis is the wording in a chunk that carries the sentence's core meaning ("be worn down by ＋某事": being worn
+// out bit by bit), judged by meaning rather than grammar and kept for practising it again in another setting;
+// empty for chunks that could change without changing what the sentence says.
 export const phraseSchema = { type: 'array', items: { type: 'object',
   properties: { meaning: { type: 'string' }, reference: { type: 'string' }, hints: { type: 'array', items: { type: 'string' } },
     axis: { type: 'string' }, axis_meaning: { type: 'string' } },

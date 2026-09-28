@@ -135,7 +135,7 @@ test('phrase help and sentence scaffolds are reported on their own ladders', () 
   const summary = supportSummary(attempt);
   assert.equal(summary.support, 1);
   assert.equal(summary.phrase, 1);
-  assert.equal(summary.text, '最高帮助：关键词 · 短语提示：结构提示');
+  assert.equal(summary.text, '最高帮助：关键词 · 短语提示：描述');
 
   const reference = supportSummary({ support_level: 0, support_events: [{ kind: 'phrase_hint', level: 3 }, { kind: 'codex_chat_support', level: 0 }] });
   assert.equal(reference.support, 0, 'a revealed chunk is not a revealed sentence');

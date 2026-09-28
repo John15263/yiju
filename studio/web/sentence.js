@@ -9,6 +9,7 @@ import { createSpeech } from './speech.js';
 import { renderCorrection } from './correction.js';
 import { createQuizUI } from './quiz.js';
 import { createTransferUI } from './transfer.js';
+import { createRewards, chunkTier } from './reward.js';
 import { createExplainUI } from './explain.js';
 import { voiceMode, chunkComparison, loose } from './voice-mode.js';
 import { deskView, markup, openQuiz, supportSummary, SUPPORT_LEVELS } from './view.js';
@@ -283,12 +284,30 @@ function render(next) {
   quizUI.update(composing || freewriting || !onDesk ? null : r);
   transferUI.update(composing || freewriting || !onDesk ? null : state);
   voiceUI.update(composing || freewriting ? null : r);
+  celebrate(oldRound, oldStage, view);
   // Arriving at a chunk's study, at a correction, or at the sentence's feedback reads its explanation;
   // the live tutor is only ever opened by hand now, to ask about it.
   explainUI.update(view ? r : null);
   if (oldStage === 'phrases' && r?.stage === 'practice' && oldRound === r.id) requestAnimationFrame(() => { if (state.active?.id === r.id && state.active.stage === 'practice') $('writing-text').focus(); });
   const renderedRevision = state.revision;
   requestAnimationFrame(() => requestAnimationFrame(() => { api('/view-ack', { rendered_revision: renderedRevision }).catch(() => {}); }));
+}
+// Rewards follow what the practice records, not the page: a chunk finished, a sentence finished, a passage
+// finished. The first state a page sees is only looked at, so a reload never celebrates.
+const rewards = createRewards({ sound: () => $('reward-sound').checked });
+let rewardSeen = null;
+function celebrate(oldRound, oldStage, view) {
+  const r = state.active;
+  const seen = { round: r?.id || null, chunks: (r?.support_events || []).filter(e => e.kind === 'phrase_expression').length, completion: state.completion?.round_id || null };
+  const before = rewardSeen; rewardSeen = seen;
+  if (!before || !r) return;
+  const finished = state.collection ? state.collection.units.every(u => u.stage === 'complete') : r.stage === 'complete';
+  if (before.round === r.id && oldStage !== 'complete' && r.stage === 'complete' && finished) { rewards.passage(); return; }
+  if (seen.completion && seen.completion !== before.completion) { rewards.sentence($('desk')); return; }
+  if (before.round === r.id && seen.chunks > before.chunks) {
+    const tier = chunkTier(r.support_events);
+    if (tier) rewards.chunk(tier, $('desk-input'));
+  }
 }
 const clozeUI = createClozeUI({ getState: () => state, api, render, error, command });
 // Hints are also read aloud, except while the tutor is talking.
@@ -306,7 +325,7 @@ hintLists.push(phrasesUI, writingHelpUI);
 const quizUI = createQuizUI({ api, render, getState: () => state, error });
 const transferUI = createTransferUI({ api, render, getState: () => state, error });
 // A hint read aloud never talks over an explanation, and an explanation starting ends one.
-const explainUI = createExplainUI({ api, auto: () => $('voice-auto').checked, before: () => speech.stop(), engine: () => explainByBrowser() ? 'browser' : 'gemini', fetcher: speak });
+const explainUI = createExplainUI({ api, auto: () => $('voice-auto').checked, before: () => speech.stop(), engine: () => explainByBrowser() ? 'browser' : 'gemini', fetcher: speak, wait: () => rewards.remaining() });
 const voiceUI = createVoiceUI({ getState: () => state, render, error, quiet: () => { speech.stop(); explainUI.stop(); },
   // Nothing is being written while a chunk is studied or feedback is read, so the tutor is not told about a draft box.
   draftOf: () => {
@@ -315,7 +334,7 @@ const voiceUI = createVoiceUI({ getState: () => state, render, error, quiet: () 
     return (r.stage === 'phrases' ? $('phrase-text') : $('writing-text')).value;
   } });
 // On unless this browser was told otherwise; the choices are per-viewer conveniences.
-for (const [id, key] of [['writing-help-auto', 'auto-hint'], ['voice-auto', 'auto-voice'], ['hint-speech', 'hint-speech']]) {
+for (const [id, key] of [['writing-help-auto', 'auto-hint'], ['voice-auto', 'auto-voice'], ['hint-speech', 'hint-speech'], ['reward-sound', 'reward-sound']]) {
   try { $(id).checked = localStorage.getItem(key) !== 'off'; } catch {}
   $(id).addEventListener('change', () => { try { localStorage.setItem(key, $(id).checked ? 'on' : 'off'); } catch {} });
 }

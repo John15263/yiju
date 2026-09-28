@@ -22,6 +22,7 @@ function setup(t, infer, settings = cfg) {
 }
 test('empty and reference-aligned drafts receive immediate local hints without paid inference', async t => {
   const { help, request, board } = setup(t, () => assert.fail('must not call'), config({}));
+  help.describe = () => assert.fail('no text service: nothing is described');
   const rev = board.get().revision;
   const start = await help.request(request(''));
   assert.equal(start.word, 'I'); assert.equal(start.provider, 'local');
@@ -33,13 +34,19 @@ test('empty and reference-aligned drafts receive immediate local hints without p
   assert.equal(ja.word, '私'); assert.ok(ja.phrase.length > ja.word.length);
 });
 test('whole-sentence hints can speak simple English, including the instant local ones', async t => {
-  let packet = null;
+  let packet = null, described = null;
   const { help, request } = setup(t, async p => { packet = p; return answer; });
+  // Offline, the instant line never names the next word: that is the next level.
+  assert.equal(localWritingHelp(material, '', 0, 'target').meaning, 'Start with the first part of your idea.');
+  help.describe = async p => { described = p; return { value: { hint: 'Start with a word for yourself.' }, model: 'fake' }; };
   const start = await help.request({ ...request(''), hint_language: 'target' });
-  assert.equal(start.meaning, 'Start with I.'); assert.equal(start.word, 'I');
+  assert.equal(start.meaning, 'Start with a word for yourself.', 'on the prepared wording, the next word is described first');
+  assert.equal(start.word, 'I', 'the word itself is the next level');
+  assert.equal(described.trigger, 'describe'); assert.equal(described.next_word, 'I');
   assert.equal((await help.request({ ...request(material.reference), hint_language: 'target' })).meaning,
     'This sentence looks complete. Send it to get feedback.');
-  assert.equal((await help.request({ ...request(''), hint_language: 'zh' })).meaning, 'Start with I.', 'never Chinese, whatever an old page asks');
+  help.describe = async () => { throw new Error('down'); };
+  assert.equal((await help.request({ ...request('I '), hint_language: 'zh' })).meaning, 'Keep going. Say the next part of your idea.', 'never Chinese, and never the word, whatever happens');
   await help.request({ ...request('I really like '), hint_language: 'target' });
   assert.equal(packet.hint_language, 'target');
   await assert.rejects(help.request({ ...request('I really like '), hint_language: 'fr' }), /Invalid option/);

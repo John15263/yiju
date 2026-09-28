@@ -425,16 +425,16 @@ test('a pause in writing brings a Chinese hint about the draft, without climbing
   const live = async packet => { asked.push(packet); return { value: { hint: `针对：${packet.draft}` }, model: 'lite' }; };
   const { phrases, board, request } = setup(t, undefined, true, undefined, null, 'gemini', live);
 
-  // Still following the prepared wording: said locally, nothing bought.
+  // Still following the prepared wording: the next word is described, not named.
   await phrases.hint(request({ level: 1, draft: 'I enjoy', auto: true }));
   let input = board.get().active.phrases.inputs[0];
-  assert.equal(asked.length, 0);
-  assert.equal(input.hints[0], 'Good so far. Next word: cooking.'); assert.equal(input.hint_level, 1);
+  assert.equal(asked.length, 1); assert.equal(asked[0].trigger, 'describe'); assert.equal(asked[0].next_word, 'cooking');
+  assert.equal(input.hints[0], '针对：I enjoy'); assert.equal(input.hint_level, 1);
 
   // Its own wording goes to Gemini, told this was a pause rather than a request, and follows the draft.
   await phrases.hint(request({ level: 1, draft: 'I really love', auto: true }));
   await phrases.hint(request({ level: 1, draft: 'I really love to', auto: true }));
-  assert.equal(asked.length, 2); assert.equal(asked[0].trigger, 'pause'); assert.equal(asked[0].level, 1);
+  assert.equal(asked.length, 3); assert.equal(asked[1].trigger, 'pause'); assert.equal(asked[1].level, 1);
   input = board.get().active.phrases.inputs[0];
   assert.equal(input.hints[0], '针对：I really love to', 'the latest pause replaces the last automatic hint');
   assert.equal(input.hint_level, 1, 'pausing never climbs the ladder by itself');
@@ -447,7 +447,7 @@ test('a pause in writing brings a Chinese hint about the draft, without climbing
   await phrases.hint(request({ level: 2, draft: 'I really love to' }));
   assert.equal(asked.at(-1).trigger, 'request');
   await phrases.hint(request({ level: 1, draft: 'I really love to go', auto: true }));
-  assert.equal(asked.length, 4); assert.equal(board.get().active.phrases.inputs[0].hint_level, 2);
+  assert.equal(asked.length, 5); assert.equal(board.get().active.phrases.inputs[0].hint_level, 2);
   assert.equal(board.get().active.phrases.inputs[0].hints[0], '针对：I really love to go');
 
   await assert.rejects(phrases.hint(request({ level: 3, draft: 'x', auto: true })), /Invalid automatic hint/, 'never the reference by itself');
@@ -460,26 +460,68 @@ test('a pause in writing brings a Chinese hint about the draft, without climbing
   assert.ok(!offline.board.read().rounds[0].support_events.some(e => e.kind === 'phrase_hint'));
 });
 
-test('hints need no button: a first direction on an empty box, and the key words once when nothing moves', async t => {
+test('what comes by itself only describes, even when stuck; the words come only when asked for', async t => {
+  const asked = [];
+  const live = async packet => { asked.push(packet); return { value: { hint: `${packet.trigger}: a word for making food` }, model: 'lite' }; };
+  const { phrases, board, request } = setup(t, undefined, true, undefined, null, 'gemini', live);
+  await phrases.hint(request({ level: 1, draft: 'I enjoy', auto: true }));
+  assert.equal(asked[0].trigger, 'describe'); assert.equal(asked[0].next_word, 'cooking');
+  await phrases.hint(request({ level: 2, draft: 'I enjoy', auto: true }));
+  let input = board.get().active.phrases.inputs[0];
+  assert.equal(asked[1].trigger, 'stuck'); assert.equal(asked[1].level, 1, 'stuck is described again, never the words');
+  assert.equal(asked[1].next_word, 'cooking');
+  assert.equal(input.hint_level, 1);
+  await phrases.hint(request({ level: 2, draft: 'I enjoy', auto: true }));
+  assert.equal(asked.length, 2, 'once for the same text');
+  assert.ok(board.read().rounds[0].support_events.filter(e => e.kind === 'phrase_hint').every(e => e.level === 1 && !/cooking/.test(e.detail.text)));
+
+  // Command + [ gives the key words, then the prepared wording.
+  await phrases.hint(request({ level: 2, draft: 'I enjoy' }));
+  assert.equal(asked.at(-1).trigger, 'request'); assert.equal(asked.at(-1).level, 2);
+  await phrases.hint(request({ level: 3, draft: 'I enjoy' }));
+  input = board.get().active.phrases.inputs[0];
+  assert.equal(input.hints[2], items[0].reference); assert.equal(asked.length, 3, 'the prepared wording is never bought');
+
+  // Without a text service the description is a plain line that names nothing.
+  const offline = setup(t, undefined, true, undefined, null, 'gemini', async () => { throw new Error('Gemini HTTP 503'); });
+  await offline.phrases.hint(offline.request({ level: 1, draft: 'I enjoy', auto: true }));
+  assert.equal(offline.board.get().active.phrases.inputs[0].hints[0], 'Good so far. Keep going.');
+});
+
+test('nothing comes by itself before 40% of the chunk is written', async t => {
+  const { hintThreshold, hintsOpen } = await import('../web/hint-gate.js');
+  assert.deepEqual([10, 6, 20, 3, 2].map(n => hintThreshold(Array.from({ length: n }, (_, i) => `w${i}`).join(' '), 'en')), [4, 2, 8, 1, 0]);
+  assert.equal(hintsOpen('私は料理', '私は料理が好きです。', 'ja'), true, 'Japanese is counted as it splits');
+  const asked = [];
+  const { phrases, board, request } = setup(t, undefined, true, undefined, null, 'gemini', async p => { asked.push(p); return { value: { hint: 'x' }, model: 'lite' }; });
+  await phrases.hint(request({ level: 1, draft: '', auto: true }));
+  assert.equal(asked.length, 0); assert.equal(board.get().active.phrases.inputs[0].hint_level, 0, 'I enjoy cooking has 3 words: 1 first');
+  await phrases.hint(request({ level: 2, draft: '', auto: true }));
+  assert.equal(asked.length, 0, 'stuck too');
+  await phrases.hint(request({ level: 2, draft: '' }));
+  assert.equal(asked.length, 1, 'asking is never held back');
+});
+
+test('hints need no button once enough is written: a description at a pause, another when nothing moves', async t => {
   const asked = [];
   const live = async packet => { asked.push(packet); return { value: { hint: `${packet.trigger}:${packet.level}` }, model: 'lite' }; };
   const { phrases, board, request } = setup(t, undefined, true, undefined, null, 'gemini', live);
-  await phrases.hint(request({ level: 1, draft: '', auto: true }));
-  assert.equal(asked[0].trigger, 'start');
+  await phrases.hint(request({ level: 1, draft: 'I really', auto: true }));
+  assert.equal(asked[0].trigger, 'pause');
   let input = board.get().active.phrases.inputs[0];
-  assert.equal(input.hints[0], 'start:1'); assert.equal(input.hint_level, 1);
+  assert.equal(input.hints[0], 'pause:1'); assert.equal(input.hint_level, 1);
 
-  await phrases.hint(request({ level: 2, draft: '', auto: true }));
-  assert.equal(asked[1].trigger, 'stuck'); assert.equal(asked[1].level, 2);
+  await phrases.hint(request({ level: 2, draft: 'I really', auto: true }));
+  assert.equal(asked[1].trigger, 'stuck'); assert.equal(asked[1].level, 1);
   input = board.get().active.phrases.inputs[0];
-  assert.equal(input.hint_level, 2); assert.equal(input.hints[1], 'stuck:2');
-  await phrases.hint(request({ level: 2, draft: '', auto: true }));
-  assert.equal(asked.length, 2, 'the key words are given once');
+  assert.equal(input.hint_level, 1); assert.equal(input.hints[0], 'stuck:1');
+  await phrases.hint(request({ level: 2, draft: 'I really', auto: true }));
+  assert.equal(asked.length, 2, 'once for the same text');
 
   await phrases.hint(request({ level: 1, draft: 'I really love', auto: true }));
   assert.equal(asked[2].trigger, 'pause');
   const events = board.read().rounds[0].support_events.filter(e => e.kind === 'phrase_hint');
-  assert.deepEqual(events.map(e => e.detail.trigger), ['start', 'stuck', 'pause'], 'each one recorded as it came');
+  assert.deepEqual(events.map(e => e.detail.trigger), ['pause', 'stuck', 'pause'], 'each one recorded as it came');
 });
 
 test('hints can speak simple English like a mentor, down to the lines said without a model', async t => {
@@ -487,15 +529,16 @@ test('hints can speak simple English like a mentor, down to the lines said witho
   const live = async packet => { asked.push(packet); return { value: { hint: 'Nice. Now say which activity you like.' }, model: 'lite' }; };
   const { phrases, board, request } = setup(t, undefined, true, undefined, null, 'gemini', live);
   await phrases.hint(request({ level: 1, draft: 'I enjoy', auto: true, hint_language: 'target' }));
-  assert.equal(board.get().active.phrases.inputs[0].hints[0], 'Good so far. Next word: cooking.');
+  assert.equal(board.get().active.phrases.inputs[0].hints[0], 'Nice. Now say which activity you like.');
+  assert.equal(asked[0].hint_language, 'target', 'a description is in the language being learned');
   await phrases.hint(request({ level: 1, draft: 'I enjoy cooking,', auto: true, hint_language: 'target' }));
   assert.equal(board.get().active.phrases.inputs[0].hints[0], 'That looks complete. Check it now.');
   await phrases.hint(request({ level: 1, draft: 'I really love', auto: true, hint_language: 'target' }));
-  assert.equal(asked[0].hint_language, 'target', 'Gemini is told which language to hint in');
+  assert.equal(asked[1].hint_language, 'target', 'Gemini is told which language to hint in');
   await phrases.hint(request({ level: 2, draft: 'I really love' }));
-  assert.equal(asked[1].hint_language, 'target', 'always the language being learned, even when not asked for');
+  assert.equal(asked[2].hint_language, 'target', 'always the language being learned, even when not asked for');
   await phrases.hint(request({ level: 1, draft: 'I really lov', auto: true, hint_language: 'zh' }));
-  assert.equal(asked[2].hint_language, 'target', 'a page still offering Chinese gets the target language too');
+  assert.equal(asked[3].hint_language, 'target', 'a page still offering Chinese gets the target language too');
 });
 
 test('a hint is shown and read as written; the prompt, not a filter, keeps it to meaning', async t => {
