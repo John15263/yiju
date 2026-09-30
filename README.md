@@ -13,8 +13,8 @@
 
 ## 插件版
 
-1. 拿到插件：从 [Releases](https://github.com/John15263/yiju/releases) 下载最新的 `yiju-extension-<版本>.zip` 并解压；或者自己构建（需要 Node 24）：`node edge/build.mjs`，生成 `dist/edge/` 文件夹。
-2. Edge 打开 `edge://extensions`（Chrome 是 `chrome://extensions`），打开「开发人员模式」，点「加载解压缩的扩展」，选解压出来的文件夹（自己构建的话是 `dist/edge`；**不是**源代码里的 `edge` 文件夹）。
+1. 拿到插件：从 [Releases](https://github.com/John15263/yiju/releases) 下载最新的 `yiju-extension-<版本>.zip` 并解压；或者自己构建（需要 Node 24）：`node edge/build.mjs`，生成 `dist/extension/` 文件夹。
+2. Edge 打开 `edge://extensions`（Chrome 是 `chrome://extensions`），打开「开发人员模式」，点「加载解压缩的扩展」，选解压出来的文件夹（自己构建的话是 `dist/extension`；**不是**源代码里的 `edge` 文件夹）。
 3. 点工具栏上一句的图标（一个绿色圆点），侧边栏打开，会弹出「服务与 key」：文字、语音陪练、朗读分别选一家，填 key，点「保存并测试」。
    - **在中国大陆**：一个阿里云百炼的 key 就够了。文字选「阿里云百炼（千问）」，语音选「阿里云百炼」，区域选中国大陆，并填上**业务空间 ID**（插件里的语音走 WebRTC，必须用业务空间的专属地址；在百炼控制台右上角能看到）；朗读选「浏览器自带」。文字也可以用 DeepSeek。
    - **在海外**：一个 [Gemini](https://aistudio.google.com/apikey) key 就能跑全套。朗读默认是「讲解用 Gemini，提示用浏览器自带」：Gemini 的朗读模型每天次数有限（Tier 1 每个模型 100 次），提示又多又短，交给浏览器念最划算。

@@ -1,13 +1,14 @@
-// Builds the browser extension (Edge and Chrome) into dist/edge from the same code the local server runs:
+// Builds the browser extension into dist/extension from the same code the local server runs. It is one package for
+// Edge and Chrome alike (both load an unpacked folder):
 //   node edge/build.mjs
-// Then load dist/edge with "Load unpacked", or hand out dist/yiju-extension-<version>.zip.
+// Then load dist/extension with "Load unpacked", or hand out dist/yiju-extension-<version>.zip.
 // This folder is the source, not an extension: its manifest is only a template, so it cannot be loaded by mistake.
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 
-const root = fileURLToPath(new URL('../', import.meta.url)), out = join(root, 'dist/edge');
+const root = fileURLToPath(new URL('../', import.meta.url)), out = join(root, 'dist/extension');
 const from = (...p) => join(root, ...p), to = (...p) => join(out, ...p);
 rmSync(out, { recursive: true, force: true });
 mkdirSync(to('web'), { recursive: true }); mkdirSync(to('server'), { recursive: true });
